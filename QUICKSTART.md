@@ -1,0 +1,199 @@
+# Terminal Commander - Quick Start Guide
+
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/CyberSecDef/TerminalCommander.git
+cd TerminalCommander
+
+# Build
+make build
+
+# Run
+./terminalcommander
+```
+
+## First Launch
+
+When you first start Terminal Commander, you'll see a dual-pane interface:
+
+```
+┌─────────────────────────────────────────┬─────────────────────────────────────────┐
+│ /home/user/documents                    │ /home/user/documents                    │
+├─────────────────────────────────────────┼─────────────────────────────────────────┤
+│ [..]                                    │ [..]                                    │
+│ [folder1]                               │ [folder1]                               │
+│ [folder2]                               │ [folder2]                               │
+│ file1.txt                         123B  │ file1.txt                         123B  │
+│ file2.pdf                        1.2MB  │ file2.pdf                        1.2MB  │
+│                                         │                                         │
+└─────────────────────────────────────────┴─────────────────────────────────────────┘
+F5:Copy F6:Move F8:Del Ctrl+F:Search Ctrl+E:Edit Ctrl+N:NewDir Tab:Switch ESC:Quit
+```
+
+The **left pane** is active (brighter colors), indicated by the blue header.
+
+## Quick Tutorial
+
+### 1. Navigate Files
+```
+Press ↓ (Down Arrow) → Move to next file
+Press ↑ (Up Arrow)   → Move to previous file
+Press Enter          → Enter the selected directory
+Press Backspace      → Go to parent directory
+```
+
+### 2. Switch Panes
+```
+Press Tab            → Switch to the other pane
+```
+
+The active pane will have a brighter blue header.
+
+### 3. Copy a File
+```
+1. Select file in left pane (use arrow keys)
+2. Press Tab to switch to right pane
+3. Navigate to destination directory (use Enter to go into folders)
+4. Press Tab to go back to left pane
+5. Press F5 (or Ctrl+C)
+```
+
+Status bar will show: `Copied: filename.txt`
+
+### 4. Move a File
+```
+1. Select file to move
+2. Navigate to destination in other pane
+3. Press F6 (or Ctrl+X)
+```
+
+File will be moved (deleted from source, copied to destination).
+
+### 5. Delete a File
+```
+1. Select file
+2. Press F8 (or Ctrl+D or Delete)
+```
+
+**Warning**: Deletion is permanent! Directories are deleted recursively.
+
+### 6. Rename a File
+```
+1. Select file
+2. Press Ctrl+R
+3. Edit the name in the prompt
+4. Press Enter to confirm or ESC to cancel
+```
+
+Status bar shows: `Rename to: newname.txt_` (cursor blinks at end)
+
+### 7. Create a Directory
+```
+1. Press Ctrl+N
+2. Type directory name
+3. Press Enter to create or ESC to cancel
+```
+
+New directory appears in the current pane.
+
+### 8. Search for a File
+```
+1. Press Ctrl+F
+2. Type part of filename
+3. Press Enter
+```
+
+First matching file will be highlighted.
+
+### 9. Edit a File
+```
+1. Select a text file
+2. Press Ctrl+E
+```
+
+External editor opens:
+- Linux/macOS: Uses $EDITOR (or nano/vi)
+- Windows: Opens notepad
+
+After saving and closing editor, you return to Terminal Commander.
+
+### 10. Exit
+```
+Press ESC or Ctrl+Q → Exit Terminal Commander
+```
+
+## Common Tasks
+
+### Organizing Photos
+```
+Left Pane: /Downloads    Right Pane: /Photos/2024
+1. Navigate Downloads → find photo
+2. Tab to switch → navigate to Photos/2024
+3. Tab back → press F5 to copy
+4. Repeat for all photos
+```
+
+### Backup Important Files
+```
+Left Pane: /Documents    Right Pane: /Backup
+1. Select file in Documents
+2. Press F5 to copy to Backup
+```
+
+### Clean Up Downloads
+```
+Left Pane: /Downloads    Right Pane: /Organized
+1. Press F6 to move files worth keeping to Organized
+2. Press F8 to delete files you don't need
+```
+
+## Keyboard Reference Card
+
+| Action | Key |
+|--------|-----|
+| Move Up | ↑ |
+| Move Down | ↓ |
+| Enter Directory | Enter |
+| Parent Directory | Backspace |
+| Switch Pane | Tab |
+| Copy | F5 or Ctrl+C |
+| Move | F6 or Ctrl+X |
+| Delete | F8 or Ctrl+D or Del |
+| Rename | Ctrl+R |
+| Edit | Ctrl+E |
+| New Directory | Ctrl+N |
+| Search | Ctrl+F |
+| Quit | ESC or Ctrl+Q |
+
+## Tips
+
+1. **Use Tab frequently** - Switch between panes to set up your source and destination
+2. **Parent directory (..)** - Always shown at top, use Enter on it to go up
+3. **File sizes** - Shown on right side in human-readable format (B, KB, MB, GB)
+4. **Directories in brackets** - Easy to distinguish `[dirname]` from files
+5. **Status bar** - Watch for confirmation messages after operations
+6. **Search is fast** - Use Ctrl+F instead of scrolling through long lists
+7. **Delete is permanent** - Be careful with F8, there's no undo
+
+## Troubleshooting
+
+### "Permission denied" errors
+- Make sure you have read/write permissions for the directories
+- On Linux, you may need `sudo` for system directories
+
+### Editor doesn't open
+- Set EDITOR environment variable: `export EDITOR=nano`
+- Or use the default (nano/vi on Linux, notepad on Windows)
+
+### Display issues
+- Make sure terminal supports color
+- Try resizing terminal window
+- Use a modern terminal emulator (Windows Terminal, iTerm2, etc.)
+
+## More Information
+
+- See **FEATURES.md** for detailed feature descriptions with examples
+- See **DEVELOPMENT.md** for technical implementation details
+- See **README.md** for installation and build instructions
