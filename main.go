@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -488,12 +489,23 @@ func (c *Commander) editFile() {
 		}
 	}
 
-	cmd := fmt.Sprintf("%s %s", editor, selected.Path)
-	c.statusMsg = "Launching editor: " + cmd
+	// Execute the editor
+	cmd := exec.Command(editor, selected.Path)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	
+	err := cmd.Run()
 	
 	// Re-initialize screen
 	c.screen.Init()
 	c.screen.Clear()
+	
+	if err != nil {
+		c.statusMsg = "Error launching editor: " + err.Error()
+	} else {
+		c.statusMsg = "Edited: " + selected.Name
+	}
 }
 
 func (c *Commander) createDirectory() {
