@@ -40,6 +40,9 @@ type Commander struct {
 	statusMsg   string
 	searchMode  bool
 	searchQuery string
+	inputMode   string // "rename", "newdir", or ""
+	inputBuffer string
+	inputPrompt string
 }
 
 func NewCommander() (*Commander, error) {
@@ -105,6 +108,10 @@ func (c *Commander) Run() error {
 }
 
 func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
+	if c.inputMode != "" {
+		return c.handleInputKey(ev)
+	}
+	
 	if c.searchMode {
 		return c.handleSearchKey(ev)
 	}
@@ -172,6 +179,88 @@ func (c *Commander) handleSearchKey(ev *tcell.EventKey) bool {
 	c.statusMsg = "Search: " + c.searchQuery
 	return false
 }
+
+func (c *Commander) handleInputKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyEscape:
+		c.inputMode = ""
+		c.inputBuffer = ""
+		c.inputPrompt = ""
+		c.statusMsg = "Cancelled"
+		return false
+	case tcell.KeyEnter:
+		c.processInput()
+		return false
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		if len(c.inputBuffer) > 0 {
+			c.inputBuffer = c.inputBuffer[:len(c.inputBuffer)-1]
+		}
+	case tcell.KeyRune:
+		c.inputBuffer += string(ev.Rune())
+	}
+	c.statusMsg = c.inputPrompt + c.inputBuffer
+	return false
+}
+
+func (c *Commander) processInput() {
+	pane := c.getActivePane()
+	
+	switch c.inputMode {
+	case "rename":
+		if len(c.inputBuffer) == 0 {
+			c.statusMsg = "Name cannot be empty"
+			c.inputMode = ""
+			c.inputBuffer = ""
+			return
+		}
+		
+		if len(pane.Files) == 0 {
+			c.statusMsg = "No file selected"
+			c.inputMode = ""
+			c.inputBuffer = ""
+			return
+		}
+		
+		selected := pane.Files[pane.SelectedIdx]
+		if selected.Name == ".." {
+			c.statusMsg = "Cannot rename parent directory link"
+			c.inputMode = ""
+			c.inputBuffer = ""
+			return
+		}
+		
+		newPath := filepath.Join(filepath.Dir(selected.Path), c.inputBuffer)
+		err := os.Rename(selected.Path, newPath)
+		if err != nil {
+			c.statusMsg = "Error renaming: " + err.Error()
+		} else {
+			c.statusMsg = "Renamed to: " + c.inputBuffer
+			c.refreshPane(pane)
+		}
+		
+	case "newdir":
+		if len(c.inputBuffer) == 0 {
+			c.statusMsg = "Directory name cannot be empty"
+			c.inputMode = ""
+			c.inputBuffer = ""
+			return
+		}
+		
+		newPath := filepath.Join(pane.CurrentPath, c.inputBuffer)
+		err := os.MkdirAll(newPath, 0755)
+		if err != nil {
+			c.statusMsg = "Error creating directory: " + err.Error()
+		} else {
+			c.statusMsg = "Created directory: " + c.inputBuffer
+			c.refreshPane(pane)
+		}
+	}
+	
+	c.inputMode = ""
+	c.inputBuffer = ""
+	c.inputPrompt = ""
+}
+
 
 func (c *Commander) getActivePane() *Pane {
 	if c.activePane == PaneLeft {
@@ -365,7 +454,10 @@ func (c *Commander) renameFile() {
 		return
 	}
 
-	c.statusMsg = "Rename not yet implemented in TUI mode - use Ctrl+R externally"
+	c.inputMode = "rename"
+	c.inputBuffer = selected.Name
+	c.inputPrompt = "Rename to: "
+	c.statusMsg = c.inputPrompt + c.inputBuffer
 }
 
 func (c *Commander) editFile() {
@@ -405,7 +497,10 @@ func (c *Commander) editFile() {
 }
 
 func (c *Commander) createDirectory() {
-	c.statusMsg = "Create directory not yet implemented in TUI mode"
+	c.inputMode = "newdir"
+	c.inputBuffer = ""
+	c.inputPrompt = "New directory name: "
+	c.statusMsg = c.inputPrompt + c.inputBuffer
 }
 
 func (c *Commander) refreshPane(pane *Pane) error {

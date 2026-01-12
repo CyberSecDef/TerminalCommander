@@ -20,6 +20,9 @@ vendor/
 # Build output
 /TerminalCommander
 /terminalcommander
+/terminalcommander-linux
+/terminalcommander-mac
+/terminalcommander.exe
 /bin/
 /dist/
 

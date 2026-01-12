@@ -27,15 +27,47 @@ A cross-platform (Windows and Linux) dual-pane console-based file explorer inspi
 
 ### Build from Source
 
+Clone the repository:
 ```bash
 git clone https://github.com/CyberSecDef/TerminalCommander.git
 cd TerminalCommander
+```
+
+#### Quick Build
+```bash
+make build
+```
+
+Or manually:
+```bash
 go build -o terminalcommander main.go
 ```
 
-On Windows:
-```cmd
-go build -o terminalcommander.exe main.go
+#### Build for All Platforms
+```bash
+make all
+```
+
+This creates:
+- `terminalcommander-linux` - Linux binary
+- `terminalcommander.exe` - Windows binary
+- `terminalcommander-mac` - macOS binary
+
+#### Platform-Specific Builds
+
+For Linux:
+```bash
+make linux
+```
+
+For Windows:
+```bash
+make windows
+```
+
+For macOS:
+```bash
+make darwin
 ```
 
 ## Usage
