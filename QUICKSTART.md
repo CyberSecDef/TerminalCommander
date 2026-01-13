@@ -98,7 +98,31 @@ Status bar shows: `Rename to: newname.txt_` (cursor blinks at end)
 
 New directory appears in the current pane.
 
-### 8. Search for a File
+### 8. Select Multiple Files
+```
+1. Navigate to a file with arrow keys
+2. Press Spacebar to toggle selection (shows [*] marker)
+3. Move to another file and press Spacebar again
+4. Repeat for all files you want to select
+```
+
+Selected files will show `[*]` before their name and remain selected while you navigate.
+
+### 9. Create an Archive
+```
+1. Select files with Spacebar (or just highlight one file)
+2. Press Ctrl+A
+3. Choose archive format with arrow keys (.zip, .tar.gz, etc.)
+4. Press Enter
+```
+
+Archive will be created in the current directory:
+- Single file: Uses the file's name (e.g., `report.zip`)
+- Multiple files: Uses timestamp (e.g., `archive_20240115_143022.zip`)
+
+After archiving, selections are cleared automatically.
+
+### 10. Search for a File
 ```
 1. Press Ctrl+F
 2. Type part of filename
@@ -107,7 +131,7 @@ New directory appears in the current pane.
 
 First matching file will be highlighted.
 
-### 9. Edit a File
+### 11. Edit a File
 ```
 1. Select a text file
 2. Press Ctrl+E
@@ -119,7 +143,7 @@ External editor opens:
 
 After saving and closing editor, you return to Terminal Commander.
 
-### 10. Exit
+### 12. Exit
 ```
 Press ESC or Ctrl+Q → Exit Terminal Commander
 ```
@@ -149,6 +173,25 @@ Left Pane: /Downloads    Right Pane: /Organized
 2. Press F8 to delete files you don't need
 ```
 
+### Archive Project Files
+```
+Left Pane: /project/src
+1. Press Spacebar on each important file to select them
+2. Press Ctrl+A to create archive
+3. Select .tar.gz format with arrow keys
+4. Press Enter → Creates timestamped archive
+5. Use F6 to move archive to backup location
+```
+
+### Batch Operations on Multiple Files
+```
+Left Pane: /photos    Right Pane: /vacation_album
+1. Select multiple photos with Spacebar (shows [*] marker)
+2. Press F5 to copy all selected files to right pane
+   OR
+   Press Ctrl+A to create a single archive of all photos
+```
+
 ## Keyboard Reference Card
 
 | Action | Key |
@@ -157,14 +200,18 @@ Left Pane: /Downloads    Right Pane: /Organized
 | Move Down | ↓ |
 | Enter Directory | Enter |
 | Parent Directory | Backspace |
+| Select/Deselect Item | Spacebar |
 | Switch Pane | Tab |
 | Copy | F5 or Ctrl+C |
 | Move | F6 or Ctrl+X |
 | Delete | F8 or Ctrl+D or Del |
+| Create Archive | Ctrl+A |
 | Rename | Ctrl+R |
 | Edit | Ctrl+E |
 | New Directory | Ctrl+N |
 | Search | Ctrl+F |
+| Go to Folder | Ctrl+G |
+| Hash File | Ctrl+H |
 | Quit | ESC or Ctrl+Q |
 
 ## Tips
@@ -173,15 +220,24 @@ Left Pane: /Downloads    Right Pane: /Organized
 2. **Parent directory (..)** - Always shown at top, use Enter on it to go up
 3. **File sizes** - Shown on right side in human-readable format (B, KB, MB, GB)
 4. **Directories in brackets** - Easy to distinguish `[dirname]` from files
-5. **Status bar** - Watch for confirmation messages after operations
-6. **Search is fast** - Use Ctrl+F instead of scrolling through long lists
-7. **Delete is permanent** - Be careful with F8, there's no undo
+5. **Selected items** - Marked with `[*]` prefix, selections persist while navigating
+6. **Status bar** - Watch for confirmation messages after operations
+7. **Search is fast** - Use Ctrl+F instead of scrolling through long lists
+8. **Delete is permanent** - Be careful with F8, there's no undo
+9. **Archive formats** - Only formats with available tools on your system will be shown
+10. **Multi-select operations** - Works with copy, move, delete, and archive creation
 
 ## Troubleshooting
 
 ### "Permission denied" errors
 - Make sure you have read/write permissions for the directories
 - On Linux, you may need `sudo` for system directories
+
+### "No archive tools available" message
+- Install archive tools based on your system:
+  - Ubuntu/Debian: `sudo apt install zip tar p7zip-full`
+  - macOS: `brew install p7zip` (tar and zip are pre-installed)
+  - Windows: Install 7-Zip or use built-in tar
 
 ### Editor doesn't open
 - Set EDITOR environment variable: `export EDITOR=nano`

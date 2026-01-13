@@ -91,7 +91,87 @@ New directory name: archive_            │ (input mode active)
 2. Enter directory name
 3. Press Enter to create or ESC to cancel
 
-### 5. Search (Ctrl+F)
+### 5. Multi-File Selection (Spacebar)
+```
+Left Pane: /home/user/documents          │ Right Pane: /home/user/downloads
+───────────────────────────────────────────────────────────────────────────
+[projects]                               │
+[*] report.pdf <-- selected              │
+[*] budget.xlsx <-- selected             │
+presentation.pptx <-- highlighted        │
+───────────────────────────────────────────────────────────────────────────
+Selected: presentation.pptx               │ (selection mode active)
+```
+
+1. Navigate to a file with arrow keys
+2. Press Spacebar to toggle selection (shows `[*]` marker)
+3. Move to next file and press Spacebar again
+4. Continue selecting multiple files
+5. Selected items remain marked while navigating
+
+**Note**: Operations (copy, move, delete, archive) will work on all selected items if any are selected, otherwise on the currently highlighted item.
+
+### 6. Archive Compression (Ctrl+A)
+
+#### Single File Archive
+```
+Left Pane: /home/user/documents          │ Right Pane: /home/user/downloads
+───────────────────────────────────────────────────────────────────────────
+report.pdf <-- highlighted               │
+budget.xlsx                              │
+───────────────────────────────────────────────────────────────────────────
+Press Ctrl+A → Archive format selection appears
+```
+
+Archive Format Selection:
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Select Archive Format for: report.pdf                        │
+├──────────────────────────────────────────────────────────────┤
+│  .zip       <-- selected                                      │
+│  .tar                                                         │
+│  .tar.gz                                                      │
+│  .tar.bz2                                                     │
+│  .tar.xz                                                      │
+└──────────────────────────────────────────────────────────────┘
+Select archive format. Enter:Create, Esc:Cancel
+```
+
+Press Enter → Creates `report.zip` in the current directory
+
+#### Multiple Files Archive
+```
+Left Pane: /home/user/documents          │ Right Pane: /home/user/downloads
+───────────────────────────────────────────────────────────────────────────
+[*] report.pdf <-- selected              │
+[*] budget.xlsx <-- selected             │
+[*] presentation.pptx <-- selected       │
+───────────────────────────────────────────────────────────────────────────
+Selected: presentation.pptx               │
+```
+
+Press Ctrl+A → Archive format selection appears:
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Select Archive Format (3 file(s) selected)                   │
+├──────────────────────────────────────────────────────────────┤
+│  .zip                                                         │
+│  .tar.gz    <-- selected                                      │
+│  .tar.bz2                                                     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Press Enter → Creates `archive_20240115_143022.tar.gz` with all selected files
+
+**Available formats** (detected automatically):
+- `.zip` - ZIP compression (requires `zip` command)
+- `.7z` - 7-Zip compression (requires `7z` or `7za` command)
+- `.tar` - TAR archive without compression
+- `.tar.gz` - TAR with gzip compression
+- `.tar.bz2` - TAR with bzip2 compression
+- `.tar.xz` - TAR with xz compression
+
+### 7. Search (Ctrl+F)
 ```
 Left Pane: /home/user/documents          │ Right Pane: /home/user/downloads
 ───────────────────────────────────────────────────────────────────────────
@@ -107,7 +187,7 @@ Search: report_                          │ (search mode active)
 3. Press Enter to find first match
 4. Status shows "Found: filename" or "Not found"
 
-### 6. File Editing (Ctrl+E)
+### 8. File Editing (Ctrl+E)
 ```
 1. Select a text file
 2. Press Ctrl+E
@@ -155,17 +235,52 @@ Left: /home/user/temp           Right: /home/user/archive
 4. Use Ctrl+F to search for specific files
 ```
 
+### Example 4: Creating Project Backups with Archives
+```
+Left: /home/user/project/src    Right: /home/user/project
+1. Navigate to src directory (left pane)
+2. Press Spacebar on each important file to select them
+   [*] main.go
+   [*] utils.go
+   [*] config.json
+3. Press Ctrl+A to start archive creation
+4. Select .tar.gz format
+5. Press Enter → Creates archive_20240115_143022.tar.gz in src directory
+6. Press Tab to switch to right pane
+7. Navigate back to parent (Backspace)
+8. Press F6 to move the archive to project directory
+```
+
+### Example 5: Batch Archive Multiple Folders
+```
+Left: /home/user/documents
+1. Navigate to documents directory
+2. Select multiple folders:
+   Press Spacebar on [photos]
+   Press Spacebar on [videos]
+   Press Spacebar on [documents]
+3. Press Ctrl+A
+4. Select .zip format
+5. Press Enter → Creates archive_20240115_143022.zip containing all three folders
+```
+
 ## Cross-Platform Notes
 
 ### Linux/macOS
 - Uses `$EDITOR` environment variable for file editing
 - Defaults to nano or vi if not set
 - Full Unicode support for file names
+- Archive tools: Install via package manager
+  - Ubuntu/Debian: `sudo apt install zip tar p7zip-full`
+  - macOS: `brew install p7zip` (tar and zip are pre-installed)
 
 ### Windows
 - Works in Windows Terminal or Command Prompt
 - Uses notepad as default editor
 - Handles Windows-style paths (C:\Users\...)
+- Archive tools: 
+  - Windows 10+ has tar built-in
+  - Install 7-Zip for .7z and .zip support
 
 ## Tips and Tricks
 
