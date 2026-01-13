@@ -121,6 +121,15 @@ type Commander struct {
 	diffEditMode      bool
 	diffCursorX       int
 	diffCursorY       int
+	// Compare mode state
+	compareMode    bool
+	compareResults map[string]CompareStatus
+}
+
+type CompareStatus struct {
+	Status    string // "left_only", "right_only", "different", "identical"
+	LeftFile  *FileItem
+	RightFile *FileItem
 }
 
 func NewCommander() (*Commander, error) {
@@ -225,6 +234,11 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 
 	switch ev.Key() {
 	case tcell.KeyEscape, tcell.KeyCtrlQ:
+		// If in compare mode, exit it
+		if c.compareMode {
+			c.exitCompareMode()
+			return false
+		}
 		return true
 	case tcell.KeyTab:
 		if c.activePane == PaneLeft {
@@ -237,14 +251,43 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 	case tcell.KeyDown:
 		c.moveSelection(1)
 	case tcell.KeyEnter:
+		// Exit compare mode when entering directory
+		if c.compareMode {
+			c.exitCompareMode()
+		}
 		c.enterDirectory()
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		// Exit compare mode when going to parent
+		if c.compareMode {
+			c.exitCompareMode()
+		}
 		c.goToParent()
 	case tcell.KeyRune:
 		// Handle spacebar for selection toggle
 		if ev.Rune() == ' ' {
 			c.toggleSelection()
 			return false
+		}
+		// Handle comparison mode sync operations
+		if c.compareMode {
+			switch ev.Rune() {
+			case '>':
+				c.syncLeftToRight()
+				return false
+			case '<':
+				c.syncRightToLeft()
+				return false
+			case '=':
+				c.syncBothWays()
+				return false
+			}
+		}
+	case tcell.KeyCtrlY:
+		// Toggle compare mode
+		if c.compareMode {
+			c.exitCompareMode()
+		} else {
+			c.enterCompareMode()
 		}
 	case tcell.KeyCtrlF:
 		c.startSearch()
@@ -2172,6 +2215,32 @@ func (c *Commander) drawPane(pane *Pane, offsetX int, active bool) {
 			}
 		}
 
+		// Add comparison indicator if in compare mode
+		compareIndicator := ""
+		compareColor := tcell.ColorDefault
+		if c.compareMode && file.Name != ".." {
+			if status, exists := c.compareResults[file.Name]; exists {
+				switch status.Status {
+				case "left_only":
+					compareIndicator = "[L] "
+					compareColor = tcell.ColorDarkCyan
+				case "right_only":
+					compareIndicator = "[R] "
+					compareColor = tcell.ColorDarkCyan
+				case "different":
+					compareIndicator = "[D] "
+					compareColor = tcell.ColorYellow
+				case "identical":
+					compareIndicator = "[=] "
+					compareColor = tcell.ColorDarkGreen
+				}
+				// Override item style with comparison color if not selected
+				if i != pane.SelectedIdx {
+					itemStyle = tcell.StyleDefault.Foreground(compareColor)
+				}
+			}
+		}
+
 		// Format name
 		displayName := file.Name
 		if file.IsDir {
@@ -2180,6 +2249,10 @@ func (c *Commander) drawPane(pane *Pane, offsetX int, active bool) {
 		// Add selection marker
 		if file.Selected {
 			displayName = "[*] " + displayName
+		}
+		// Add comparison indicator
+		if compareIndicator != "" {
+			displayName = compareIndicator + displayName
 		}
 		if len(displayName) > nameColWidth-1 {
 			displayName = displayName[:nameColWidth-4] + "..."
@@ -3110,6 +3183,325 @@ func (c *Commander) exitDiffMode() bool {
 	c.refreshPane(c.leftPane)
 	c.refreshPane(c.rightPane)
 	return false
+}
+
+// enterCompareMode initializes folder comparison mode
+func (c *Commander) enterCompareMode() {
+	// Initialize compare results map
+	c.compareResults = make(map[string]CompareStatus)
+	
+	// Get files from both panes (excluding "..")
+	leftFiles := make(map[string]*FileItem)
+	for i := range c.leftPane.Files {
+		if c.leftPane.Files[i].Name != ".." {
+			leftFiles[c.leftPane.Files[i].Name] = &c.leftPane.Files[i]
+		}
+	}
+	
+	rightFiles := make(map[string]*FileItem)
+	for i := range c.rightPane.Files {
+		if c.rightPane.Files[i].Name != ".." {
+			rightFiles[c.rightPane.Files[i].Name] = &c.rightPane.Files[i]
+		}
+	}
+	
+	// Compare files
+	leftOnly := 0
+	rightOnly := 0
+	different := 0
+	identical := 0
+	
+	// Check files in left pane
+	for name, leftFile := range leftFiles {
+		if rightFile, exists := rightFiles[name]; exists {
+			// File exists in both panes
+			if leftFile.IsDir && rightFile.IsDir {
+				// Both are directories - consider identical by name only
+				c.compareResults[name] = CompareStatus{
+					Status:    "identical",
+					LeftFile:  leftFile,
+					RightFile: rightFile,
+				}
+				identical++
+			} else if !leftFile.IsDir && !rightFile.IsDir {
+				// Both are files - compare by size and modification time
+				if leftFile.Size == rightFile.Size && leftFile.ModTime.Equal(rightFile.ModTime) {
+					c.compareResults[name] = CompareStatus{
+						Status:    "identical",
+						LeftFile:  leftFile,
+						RightFile: rightFile,
+					}
+					identical++
+				} else {
+					c.compareResults[name] = CompareStatus{
+						Status:    "different",
+						LeftFile:  leftFile,
+						RightFile: rightFile,
+					}
+					different++
+				}
+			} else {
+				// One is file, one is directory - different
+				c.compareResults[name] = CompareStatus{
+					Status:    "different",
+					LeftFile:  leftFile,
+					RightFile: rightFile,
+				}
+				different++
+			}
+		} else {
+			// File exists only in left pane
+			c.compareResults[name] = CompareStatus{
+				Status:   "left_only",
+				LeftFile: leftFile,
+			}
+			leftOnly++
+		}
+	}
+	
+	// Check files in right pane that don't exist in left
+	for name, rightFile := range rightFiles {
+		if _, exists := leftFiles[name]; !exists {
+			c.compareResults[name] = CompareStatus{
+				Status:    "right_only",
+				RightFile: rightFile,
+			}
+			rightOnly++
+		}
+	}
+	
+	// Set compare mode flag
+	c.compareMode = true
+	
+	// Display statistics
+	totalFiles := len(c.compareResults)
+	c.setStatus(fmt.Sprintf("Compare: %d files | Left only: %d | Right only: %d | Different: %d | Identical: %d",
+		totalFiles, leftOnly, rightOnly, different, identical))
+}
+
+// exitCompareMode cleans up and exits comparison mode
+func (c *Commander) exitCompareMode() {
+	c.compareMode = false
+	c.compareResults = nil
+	c.setStatus("Compare mode exited")
+	c.refreshPane(c.leftPane)
+	c.refreshPane(c.rightPane)
+}
+
+// syncLeftToRight copies selected file(s) from left to right pane
+func (c *Commander) syncLeftToRight() {
+	if !c.compareMode {
+		c.setStatus("Not in compare mode")
+		return
+	}
+	
+	// Collect files to sync
+	var filesToSync []FileItem
+	for i := range c.leftPane.Files {
+		file := &c.leftPane.Files[i]
+		if file.Name == ".." {
+			continue
+		}
+		if file.Selected {
+			// Check if file can be synced
+			if status, exists := c.compareResults[file.Name]; exists {
+				if status.Status == "left_only" || status.Status == "different" {
+					filesToSync = append(filesToSync, *file)
+				}
+			}
+		}
+	}
+	
+	// If nothing selected, use current file
+	if len(filesToSync) == 0 && c.activePane == PaneLeft && len(c.leftPane.Files) > 0 {
+		file := c.leftPane.Files[c.leftPane.SelectedIdx]
+		if file.Name != ".." {
+			if status, exists := c.compareResults[file.Name]; exists {
+				if status.Status == "left_only" || status.Status == "different" {
+					filesToSync = append(filesToSync, file)
+				}
+			}
+		}
+	}
+	
+	if len(filesToSync) == 0 {
+		c.setStatus("No files to sync (select left_only or different files)")
+		return
+	}
+	
+	// Copy files
+	copiedCount := 0
+	var lastErr error
+	for _, file := range filesToSync {
+		destPath := filepath.Join(c.rightPane.CurrentPath, file.Name)
+		err := copyFileOrDir(file.Path, destPath)
+		if err != nil {
+			lastErr = err
+		} else {
+			copiedCount++
+		}
+	}
+	
+	// Update status
+	if lastErr != nil {
+		c.setStatus(fmt.Sprintf("Synced %d file(s) left→right, last error: %s", copiedCount, lastErr.Error()))
+	} else {
+		c.setStatus(fmt.Sprintf("Synced %d file(s) left→right", copiedCount))
+	}
+	
+	// Clear selections
+	for i := range c.leftPane.Files {
+		c.leftPane.Files[i].Selected = false
+	}
+	
+	// Refresh and re-compare
+	c.refreshPane(c.rightPane)
+	c.enterCompareMode()
+}
+
+// syncRightToLeft copies selected file(s) from right to left pane
+func (c *Commander) syncRightToLeft() {
+	if !c.compareMode {
+		c.setStatus("Not in compare mode")
+		return
+	}
+	
+	// Collect files to sync
+	var filesToSync []FileItem
+	for i := range c.rightPane.Files {
+		file := &c.rightPane.Files[i]
+		if file.Name == ".." {
+			continue
+		}
+		if file.Selected {
+			// Check if file can be synced
+			if status, exists := c.compareResults[file.Name]; exists {
+				if status.Status == "right_only" || status.Status == "different" {
+					filesToSync = append(filesToSync, *file)
+				}
+			}
+		}
+	}
+	
+	// If nothing selected, use current file
+	if len(filesToSync) == 0 && c.activePane == PaneRight && len(c.rightPane.Files) > 0 {
+		file := c.rightPane.Files[c.rightPane.SelectedIdx]
+		if file.Name != ".." {
+			if status, exists := c.compareResults[file.Name]; exists {
+				if status.Status == "right_only" || status.Status == "different" {
+					filesToSync = append(filesToSync, file)
+				}
+			}
+		}
+	}
+	
+	if len(filesToSync) == 0 {
+		c.setStatus("No files to sync (select right_only or different files)")
+		return
+	}
+	
+	// Copy files
+	copiedCount := 0
+	var lastErr error
+	for _, file := range filesToSync {
+		destPath := filepath.Join(c.leftPane.CurrentPath, file.Name)
+		err := copyFileOrDir(file.Path, destPath)
+		if err != nil {
+			lastErr = err
+		} else {
+			copiedCount++
+		}
+	}
+	
+	// Update status
+	if lastErr != nil {
+		c.setStatus(fmt.Sprintf("Synced %d file(s) right→left, last error: %s", copiedCount, lastErr.Error()))
+	} else {
+		c.setStatus(fmt.Sprintf("Synced %d file(s) right→left", copiedCount))
+	}
+	
+	// Clear selections
+	for i := range c.rightPane.Files {
+		c.rightPane.Files[i].Selected = false
+	}
+	
+	// Refresh and re-compare
+	c.refreshPane(c.leftPane)
+	c.enterCompareMode()
+}
+
+// syncBothWays synchronizes bidirectionally
+func (c *Commander) syncBothWays() {
+	if !c.compareMode {
+		c.setStatus("Not in compare mode")
+		return
+	}
+	
+	leftCopied := 0
+	rightCopied := 0
+	newerCopied := 0
+	var lastErr error
+	
+	// Process all files in compare results
+	for name, status := range c.compareResults {
+		switch status.Status {
+		case "left_only":
+			// Copy from left to right
+			destPath := filepath.Join(c.rightPane.CurrentPath, name)
+			err := copyFileOrDir(status.LeftFile.Path, destPath)
+			if err != nil {
+				lastErr = err
+			} else {
+				leftCopied++
+			}
+		case "right_only":
+			// Copy from right to left
+			destPath := filepath.Join(c.leftPane.CurrentPath, name)
+			err := copyFileOrDir(status.RightFile.Path, destPath)
+			if err != nil {
+				lastErr = err
+			} else {
+				rightCopied++
+			}
+		case "different":
+			// Copy newer file to the other side
+			if !status.LeftFile.IsDir && !status.RightFile.IsDir {
+				if status.LeftFile.ModTime.After(status.RightFile.ModTime) {
+					// Left is newer, copy to right
+					destPath := filepath.Join(c.rightPane.CurrentPath, name)
+					err := copyFileOrDir(status.LeftFile.Path, destPath)
+					if err != nil {
+						lastErr = err
+					} else {
+						newerCopied++
+					}
+				} else if status.RightFile.ModTime.After(status.LeftFile.ModTime) {
+					// Right is newer, copy to left
+					destPath := filepath.Join(c.leftPane.CurrentPath, name)
+					err := copyFileOrDir(status.RightFile.Path, destPath)
+					if err != nil {
+						lastErr = err
+					} else {
+						newerCopied++
+					}
+				}
+			}
+		}
+	}
+	
+	// Update status
+	if lastErr != nil {
+		c.setStatus(fmt.Sprintf("Synced both ways: %d left→right, %d right→left, %d newer copied | Error: %s",
+			leftCopied, rightCopied, newerCopied, lastErr.Error()))
+	} else {
+		c.setStatus(fmt.Sprintf("Synced both ways: %d left→right, %d right→left, %d newer copied",
+			leftCopied, rightCopied, newerCopied))
+	}
+	
+	// Refresh both panes and re-compare
+	c.refreshPane(c.leftPane)
+	c.refreshPane(c.rightPane)
+	c.enterCompareMode()
 }
 
 func main() {
