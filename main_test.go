@@ -145,3 +145,124 @@ func TestPane_RefreshPane(t *testing.T) {
 		t.Errorf("Second item should be a directory")
 	}
 }
+
+func TestHashComputation(t *testing.T) {
+	// Create temporary test file
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.txt")
+	testContent := []byte("Hello, World!")
+	
+	if err := os.WriteFile(testFile, testContent, 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	
+	tests := []struct {
+		algorithm    string
+		expectedHash string
+	}{
+		{"MD5", "65a8e27d8879283831b664bd8b7f0ad4"},
+		{"SHA-1", "0a0a9f2a6772942557ab5355d76af442f8f65e01"},
+		{"SHA-256", "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"},
+		{"SHA-512", "374d794a95cdcfd8b35993185fef9ba368f160d8daf432d08ba9f1ed1e5abe6cc69291e0fa2fe0006a52570ef18c19def4e617c33ce52ef0a6e5fbe318cb0387"},
+		{"SHA3-256", "1af17a664e3fa8e419b8ba05c2a173169df76162a5a286e0c405b460d478f7ef"},
+		{"SHA3-512", "38e05c33d7b067127f217d8c856e554fcff09c9320b8a5979ce2ff5d95dd27ba35d1fba50c562dfd1d6cc48bc9c5baa4390894418cc942d968f97bcb659419ed"},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.algorithm, func(t *testing.T) {
+			// Create a minimal Commander instance
+			cmd := &Commander{}
+			cmd.hashAlgorithms = []string{tt.algorithm}
+			cmd.hashSelectedIdx = 0
+			cmd.hashFilePath = testFile
+			
+			// Compute hash
+			cmd.computeHash()
+			
+			// Verify hash result
+			if cmd.hashResult != tt.expectedHash {
+				t.Errorf("Hash mismatch for %s:\ngot:  %s\nwant: %s", tt.algorithm, cmd.hashResult, tt.expectedHash)
+			}
+			
+			// Verify hash result mode is enabled
+			if !cmd.hashResultMode {
+				t.Errorf("Hash result mode should be enabled after computation")
+			}
+			
+			// Verify algorithm is stored
+			if cmd.hashAlgorithm != tt.algorithm {
+				t.Errorf("Hash algorithm mismatch: got %s, want %s", cmd.hashAlgorithm, tt.algorithm)
+			}
+		})
+	}
+}
+
+func TestHashComputationBLAKE2(t *testing.T) {
+	// Create temporary test file
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.txt")
+	testContent := []byte("Hello, World!")
+	
+	if err := os.WriteFile(testFile, testContent, 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	
+	tests := []struct {
+		algorithm    string
+		expectedHash string
+	}{
+		{"BLAKE2b-256", "511bc81dde11180838c562c82bb35f3223f46061ebde4a955c27b3f489cf1e03"},
+		{"BLAKE2s-256", "ec9db904d636ef61f1421b2ba47112a4fa6b8964fd4a0a514834455c21df7812"},
+		{"BLAKE3", "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"},
+		{"RIPEMD-160", "527a6a4b9a6da75607546842e0e00105350b1aaf"},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.algorithm, func(t *testing.T) {
+			// Create a minimal Commander instance
+			cmd := &Commander{}
+			cmd.hashAlgorithms = []string{tt.algorithm}
+			cmd.hashSelectedIdx = 0
+			cmd.hashFilePath = testFile
+			
+			// Compute hash
+			cmd.computeHash()
+			
+			// Verify hash result
+			if cmd.hashResult != tt.expectedHash {
+				t.Errorf("Hash mismatch for %s:\ngot:  %s\nwant: %s", tt.algorithm, cmd.hashResult, tt.expectedHash)
+			}
+		})
+	}
+}
+
+func TestHashComputationErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	
+	t.Run("NonExistentFile", func(t *testing.T) {
+		cmd := &Commander{}
+		cmd.hashAlgorithms = []string{"MD5"}
+		cmd.hashSelectedIdx = 0
+		cmd.hashFilePath = filepath.Join(tmpDir, "nonexistent.txt")
+		
+		cmd.computeHash()
+		
+		// Should not enable result mode on error
+		if cmd.hashResultMode {
+			t.Error("Hash result mode should not be enabled on error")
+		}
+	})
+	
+	t.Run("NoAlgorithmSelected", func(t *testing.T) {
+		cmd := &Commander{}
+		cmd.hashAlgorithms = []string{}
+		cmd.hashFilePath = filepath.Join(tmpDir, "test.txt")
+		
+		cmd.computeHash()
+		
+		// Should not enable result mode on error
+		if cmd.hashResultMode {
+			t.Error("Hash result mode should not be enabled on error")
+		}
+	})
+}
