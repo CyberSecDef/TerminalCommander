@@ -87,9 +87,10 @@ type Commander struct {
 	hashSelectedIdx   int
 	hashFilePath      string
 	// Hash result state
-	hashResultMode bool
-	hashResult     string
-	hashAlgorithm  string
+	hashResultMode     bool
+	hashResult         string
+	hashAlgorithm      string
+	hashResultFilePath string
 }
 
 func NewCommander() (*Commander, error) {
@@ -717,11 +718,23 @@ func (c *Commander) computeHash() {
 		_, hashErr = io.Copy(hasher, file)
 		hashBytes = hasher.Sum(nil)
 	case "BLAKE2b-256":
-		hasher, _ := blake2b.New256(nil)
+		hasher, err := blake2b.New256(nil)
+		if err != nil {
+			c.setStatus("Error initializing BLAKE2b: " + err.Error())
+			c.hashAlgorithms = nil
+			c.hashFilePath = ""
+			return
+		}
 		_, hashErr = io.Copy(hasher, file)
 		hashBytes = hasher.Sum(nil)
 	case "BLAKE2s-256":
-		hasher, _ := blake2s.New256(nil)
+		hasher, err := blake2s.New256(nil)
+		if err != nil {
+			c.setStatus("Error initializing BLAKE2s: " + err.Error())
+			c.hashAlgorithms = nil
+			c.hashFilePath = ""
+			return
+		}
 		_, hashErr = io.Copy(hasher, file)
 		hashBytes = hasher.Sum(nil)
 	case "BLAKE3":
@@ -749,6 +762,7 @@ func (c *Commander) computeHash() {
 	// Convert to hex string (lowercase)
 	c.hashResult = hex.EncodeToString(hashBytes)
 	c.hashAlgorithm = algorithm
+	c.hashResultFilePath = c.hashFilePath
 	c.hashResultMode = true
 	c.hashAlgorithms = nil
 	c.hashFilePath = ""
@@ -760,6 +774,7 @@ func (c *Commander) handleHashResultKey(ev *tcell.EventKey) bool {
 	c.hashResultMode = false
 	c.hashResult = ""
 	c.hashAlgorithm = ""
+	c.hashResultFilePath = ""
 	c.setStatus("")
 	return false
 }
@@ -1250,7 +1265,7 @@ func (c *Commander) drawHashResult() {
 	c.drawText(0, 0, width, headerStyle, title)
 
 	// Draw file path
-	fileName := filepath.Base(c.hashFilePath)
+	fileName := filepath.Base(c.hashResultFilePath)
 	fileLabel := fmt.Sprintf("  File: %s", fileName)
 	if len(fileLabel) > width {
 		fileLabel = fileLabel[:width]
