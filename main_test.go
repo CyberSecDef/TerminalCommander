@@ -669,3 +669,142 @@ if cmd.diffRightModified {
 t.Error("Expected right modified flag to be cleared")
 }
 }
+
+func TestDiffModeWorkflow(t *testing.T) {
+tmpDir := t.TempDir()
+
+// Create two test files with known differences
+file1 := filepath.Join(tmpDir, "file1.txt")
+file2 := filepath.Join(tmpDir, "file2.txt")
+
+content1 := "Line 1\nLine 2\nLine 3\nLine 4\n"
+content2 := "Line 1\nLine 2 modified\nLine 3\nLine 5\n"
+
+os.WriteFile(file1, []byte(content1), 0644)
+os.WriteFile(file2, []byte(content2), 0644)
+
+// Create panes
+leftPane := &Pane{
+CurrentPath: tmpDir,
+Files: []FileItem{
+{Name: "file1.txt", Path: file1, IsDir: false},
+},
+SelectedIdx: 0,
+}
+
+rightPane := &Pane{
+CurrentPath: tmpDir,
+Files: []FileItem{
+{Name: "file2.txt", Path: file2, IsDir: false},
+},
+SelectedIdx: 0,
+}
+
+cmd := &Commander{
+leftPane:  leftPane,
+rightPane: rightPane,
+}
+
+// Enter diff mode
+cmd.enterDiffMode()
+
+if !cmd.diffMode {
+t.Fatal("Failed to enter diff mode")
+}
+
+// Verify differences were calculated
+if len(cmd.diffDifferences) == 0 {
+t.Error("No differences detected")
+}
+
+// Find a non-equal difference
+foundDiff := false
+for i, diff := range cmd.diffDifferences {
+if diff.Type != "equal" {
+cmd.diffCurrentIdx = i
+foundDiff = true
+break
+}
+}
+
+if !foundDiff {
+t.Fatal("No non-equal differences found")
+}
+
+// Test copy operation
+originalRightLines := make([]string, len(cmd.diffRightLines))
+copy(originalRightLines, cmd.diffRightLines)
+
+cmd.copyDiffLeftToRight()
+
+// Right should be marked as modified
+if !cmd.diffRightModified {
+t.Error("Right file should be marked as modified after copy")
+}
+
+// Test save
+cmd.saveDiffFiles()
+
+// Modified flags should be cleared
+if cmd.diffLeftModified || cmd.diffRightModified {
+t.Error("Modified flags should be cleared after save")
+}
+
+// Test navigation
+_ = cmd.diffCurrentIdx
+cmd.jumpToNextDiff()
+// Either moved to next diff or wrapped around
+
+cmd.jumpToPrevDiff()
+// Should be able to navigate back
+
+// Exit diff mode
+cmd.exitDiffMode()
+
+if cmd.diffMode {
+t.Error("Should have exited diff mode")
+}
+}
+
+func TestDiffModeEmptyFiles(t *testing.T) {
+tmpDir := t.TempDir()
+
+// Create empty files
+file1 := filepath.Join(tmpDir, "empty1.txt")
+file2 := filepath.Join(tmpDir, "empty2.txt")
+
+os.WriteFile(file1, []byte(""), 0644)
+os.WriteFile(file2, []byte(""), 0644)
+
+leftPane := &Pane{
+CurrentPath: tmpDir,
+Files: []FileItem{
+{Name: "empty1.txt", Path: file1, IsDir: false},
+},
+SelectedIdx: 0,
+}
+
+rightPane := &Pane{
+CurrentPath: tmpDir,
+Files: []FileItem{
+{Name: "empty2.txt", Path: file2, IsDir: false},
+},
+SelectedIdx: 0,
+}
+
+cmd := &Commander{
+leftPane:  leftPane,
+rightPane: rightPane,
+}
+
+cmd.enterDiffMode()
+
+if !cmd.diffMode {
+t.Fatal("Failed to enter diff mode with empty files")
+}
+
+// Should have at least one line (empty files get one empty line)
+if len(cmd.diffLeftLines) == 0 || len(cmd.diffRightLines) == 0 {
+t.Error("Empty files should have at least one line")
+}
+}
