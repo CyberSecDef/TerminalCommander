@@ -1096,21 +1096,54 @@ func (c *Commander) copyFile() {
 		return
 	}
 
-	selected := pane.Files[pane.SelectedIdx]
-	if selected.Name == ".." {
-		c.setStatus("Cannot copy parent directory link")
-		return
+	// Collect files to copy
+	var filesToCopy []FileItem
+	for _, f := range pane.Files {
+		if f.Selected && f.Name != ".." {
+			filesToCopy = append(filesToCopy, f)
+		}
 	}
 
-	destPath := filepath.Join(destPane.CurrentPath, selected.Name)
+	// If nothing selected, use current file
+	if len(filesToCopy) == 0 {
+		selected := pane.Files[pane.SelectedIdx]
+		if selected.Name == ".." {
+			c.setStatus("Cannot copy parent directory link")
+			return
+		}
+		filesToCopy = append(filesToCopy, selected)
+	}
 
-	err := copyFileOrDir(selected.Path, destPath)
-	if err != nil {
-		c.setStatus("Error copying: " + err.Error())
+	// Copy all selected files
+	copiedCount := 0
+	var lastErr error
+	for _, file := range filesToCopy {
+		destPath := filepath.Join(destPane.CurrentPath, file.Name)
+		err := copyFileOrDir(file.Path, destPath)
+		if err != nil {
+			lastErr = err
+		} else {
+			copiedCount++
+		}
+	}
+
+	// Update status and refresh
+	if lastErr != nil {
+		c.setStatus(fmt.Sprintf("Copied %d file(s), last error: %s", copiedCount, lastErr.Error()))
 	} else {
-		c.setStatus("Copied: " + selected.Name)
-		c.refreshPane(destPane)
+		if copiedCount == 1 {
+			c.setStatus("Copied: " + filesToCopy[0].Name)
+		} else {
+			c.setStatus(fmt.Sprintf("Copied %d file(s)", copiedCount))
+		}
 	}
+
+	// Clear selections after copy
+	for i := range pane.Files {
+		pane.Files[i].Selected = false
+	}
+
+	c.refreshPane(destPane)
 }
 
 func (c *Commander) moveFile() {
@@ -1122,22 +1155,55 @@ func (c *Commander) moveFile() {
 		return
 	}
 
-	selected := pane.Files[pane.SelectedIdx]
-	if selected.Name == ".." {
-		c.setStatus("Cannot move parent directory link")
-		return
+	// Collect files to move
+	var filesToMove []FileItem
+	for _, f := range pane.Files {
+		if f.Selected && f.Name != ".." {
+			filesToMove = append(filesToMove, f)
+		}
 	}
 
-	destPath := filepath.Join(destPane.CurrentPath, selected.Name)
+	// If nothing selected, use current file
+	if len(filesToMove) == 0 {
+		selected := pane.Files[pane.SelectedIdx]
+		if selected.Name == ".." {
+			c.setStatus("Cannot move parent directory link")
+			return
+		}
+		filesToMove = append(filesToMove, selected)
+	}
 
-	err := os.Rename(selected.Path, destPath)
-	if err != nil {
-		c.setStatus("Error moving: " + err.Error())
+	// Move all selected files
+	movedCount := 0
+	var lastErr error
+	for _, file := range filesToMove {
+		destPath := filepath.Join(destPane.CurrentPath, file.Name)
+		err := os.Rename(file.Path, destPath)
+		if err != nil {
+			lastErr = err
+		} else {
+			movedCount++
+		}
+	}
+
+	// Update status and refresh
+	if lastErr != nil {
+		c.setStatus(fmt.Sprintf("Moved %d file(s), last error: %s", movedCount, lastErr.Error()))
 	} else {
-		c.setStatus("Moved: " + selected.Name)
-		c.refreshPane(pane)
-		c.refreshPane(destPane)
+		if movedCount == 1 {
+			c.setStatus("Moved: " + filesToMove[0].Name)
+		} else {
+			c.setStatus(fmt.Sprintf("Moved %d file(s)", movedCount))
+		}
 	}
+
+	// Clear selections after move
+	for i := range pane.Files {
+		pane.Files[i].Selected = false
+	}
+
+	c.refreshPane(pane)
+	c.refreshPane(destPane)
 }
 
 func (c *Commander) deleteFile() {
@@ -1148,28 +1214,58 @@ func (c *Commander) deleteFile() {
 		return
 	}
 
-	selected := pane.Files[pane.SelectedIdx]
-	if selected.Name == ".." {
-		c.setStatus("Cannot delete parent directory link")
-		return
-	}
-
-	var err error
-	if selected.IsDir {
-		err = os.RemoveAll(selected.Path)
-	} else {
-		err = os.Remove(selected.Path)
-	}
-
-	if err != nil {
-		c.setStatus("Error deleting: " + err.Error())
-	} else {
-		c.setStatus("Deleted: " + selected.Name)
-		if pane.SelectedIdx > 0 {
-			pane.SelectedIdx--
+	// Collect files to delete
+	var filesToDelete []FileItem
+	for _, f := range pane.Files {
+		if f.Selected && f.Name != ".." {
+			filesToDelete = append(filesToDelete, f)
 		}
-		c.refreshPane(pane)
 	}
+
+	// If nothing selected, use current file
+	if len(filesToDelete) == 0 {
+		selected := pane.Files[pane.SelectedIdx]
+		if selected.Name == ".." {
+			c.setStatus("Cannot delete parent directory link")
+			return
+		}
+		filesToDelete = append(filesToDelete, selected)
+	}
+
+	// Delete all selected files
+	deletedCount := 0
+	var lastErr error
+	for _, file := range filesToDelete {
+		var err error
+		if file.IsDir {
+			err = os.RemoveAll(file.Path)
+		} else {
+			err = os.Remove(file.Path)
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			deletedCount++
+		}
+	}
+
+	// Update status
+	if lastErr != nil {
+		c.setStatus(fmt.Sprintf("Deleted %d file(s), last error: %s", deletedCount, lastErr.Error()))
+	} else {
+		if deletedCount == 1 {
+			c.setStatus("Deleted: " + filesToDelete[0].Name)
+		} else {
+			c.setStatus(fmt.Sprintf("Deleted %d file(s)", deletedCount))
+		}
+	}
+
+	// Move cursor up if needed
+	if pane.SelectedIdx > 0 && pane.SelectedIdx >= len(pane.Files)-deletedCount {
+		pane.SelectedIdx--
+	}
+
+	c.refreshPane(pane)
 }
 
 func (c *Commander) renameFile() {
@@ -1795,9 +1891,10 @@ func (c *Commander) refreshPane(pane *Pane) error {
 	parent := filepath.Dir(pane.CurrentPath)
 	if parent != pane.CurrentPath {
 		pane.Files = append(pane.Files, FileItem{
-			Name:  "..",
-			IsDir: true,
-			Path:  parent,
+			Name:     "..",
+			IsDir:    true,
+			Path:     parent,
+			Selected: false,
 		})
 	}
 
@@ -1814,11 +1911,12 @@ func (c *Commander) refreshPane(pane *Pane) error {
 		}
 
 		item := FileItem{
-			Name:    entry.Name(),
-			Ext:     ext,
-			IsDir:   entry.IsDir(),
-			Path:    filepath.Join(pane.CurrentPath, entry.Name()),
-			ModTime: info.ModTime(),
+			Name:     entry.Name(),
+			Ext:      ext,
+			IsDir:    entry.IsDir(),
+			Path:     filepath.Join(pane.CurrentPath, entry.Name()),
+			ModTime:  info.ModTime(),
+			Selected: false,
 		}
 		if !entry.IsDir() {
 			item.Size = info.Size()
