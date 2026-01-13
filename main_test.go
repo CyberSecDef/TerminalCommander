@@ -268,6 +268,18 @@ func TestHashComputationErrors(t *testing.T) {
 	})
 }
 
+// Helper function to create a test Commander instance
+func createTestCommander(tmpDir string) *Commander {
+	pane := &Pane{
+		CurrentPath: tmpDir,
+	}
+	return &Commander{
+		leftPane:   pane,
+		rightPane:  &Pane{},
+		activePane: PaneLeft,
+	}
+}
+
 func TestGetAvailableArchiveFormats(t *testing.T) {
 	cmd := &Commander{}
 	
@@ -315,14 +327,7 @@ func TestCreateZipArchive(t *testing.T) {
 	}
 	
 	// Create a minimal Commander instance
-	pane := &Pane{
-		CurrentPath: tmpDir,
-	}
-	cmd := &Commander{
-		leftPane:   pane,
-		rightPane:  &Pane{},
-		activePane: PaneLeft,
-	}
+	cmd := createTestCommander(tmpDir)
 	
 	// Test creating archive with multiple files
 	archivePath := filepath.Join(tmpDir, "test.zip")
@@ -367,14 +372,7 @@ func TestCreateZipArchiveWithDirectory(t *testing.T) {
 	}
 	
 	// Create a minimal Commander instance
-	pane := &Pane{
-		CurrentPath: tmpDir,
-	}
-	cmd := &Commander{
-		leftPane:   pane,
-		rightPane:  &Pane{},
-		activePane: PaneLeft,
-	}
+	cmd := createTestCommander(tmpDir)
 	
 	// Test creating archive with directory
 	archivePath := filepath.Join(tmpDir, "dirtest.zip")
@@ -407,14 +405,7 @@ func TestCreateZipArchiveWithSpaces(t *testing.T) {
 	}
 	
 	// Create a minimal Commander instance
-	pane := &Pane{
-		CurrentPath: tmpDir,
-	}
-	cmd := &Commander{
-		leftPane:   pane,
-		rightPane:  &Pane{},
-		activePane: PaneLeft,
-	}
+	cmd := createTestCommander(tmpDir)
 	
 	// Test creating archive with file containing spaces
 	archivePath := filepath.Join(tmpDir, "spaces test.zip")
