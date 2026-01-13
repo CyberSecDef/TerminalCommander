@@ -28,6 +28,17 @@ See [QUICKSTART.md](QUICKSTART.md) for a complete tutorial.
   - Delete files/directories (F8 or Ctrl+D)
   - Rename files (Ctrl+R)
   - Create directories (Ctrl+N)
+- **Multi-File Selection** (Spacebar):
+  - Toggle selection on individual files/folders with spacebar
+  - Visual indicator `[*]` shows selected items
+  - Selection persists while navigating
+  - Perform operations on multiple selected items
+- **Archive Compression** (Ctrl+A):
+  - Create archives from selected files or current item
+  - Support for multiple formats: .zip, .7z, .tar, .tar.gz, .tar.bz2, .tar.xz
+  - Automatic format detection based on available system tools
+  - Smart archive naming (single item uses item name, multiple items use timestamp)
+  - Progress indication and error handling
 - **Built-in Text Editor** (Ctrl+E):
   - Line numbers displayed
   - Full cursor navigation (arrows, Home, End, PgUp, PgDn)
@@ -47,6 +58,7 @@ See [QUICKSTART.md](QUICKSTART.md) for a complete tutorial.
   - Progress indication for large files
 - **Visual Indicators**: 
   - Directories shown in brackets [dirname]
+  - Selected items marked with `[*]` prefix
   - File extension, modification date, and size columns
   - Active pane highlighted
   - Current path shown at top of each pane
@@ -125,10 +137,12 @@ terminalcommander.exe
 | ↑/↓ | Move selection up/down |
 | Enter | Enter directory |
 | Backspace | Go to parent directory |
+| Spacebar | Toggle selection of current item |
 | Tab | Switch between left and right pane |
 | F5 / Ctrl+C | Copy selected file/directory to other pane |
 | F6 / Ctrl+X | Move selected file/directory to other pane |
 | F8 / Ctrl+D / Delete | Delete selected file/directory |
+| Ctrl+A | Create archive from selected items (show format selection) |
 | Ctrl+R | Rename file/directory |
 | Ctrl+E | Edit file with built-in editor |
 | Ctrl+F | Recursive search for files |
@@ -176,6 +190,15 @@ terminalcommander.exe
 |-----|--------|
 | Any Key | Close hash result and return to file browser |
 | ESC | Cancel and return to file browser |
+
+#### Archive Format Selection
+
+| Key | Action |
+|-----|--------|
+| ↑/↓ | Move selection through archive formats |
+| Home / End | Jump to first/last format |
+| Enter | Create archive with selected format |
+| ESC | Cancel archive operation |
 
 ## Cross-Platform Compatibility
 
