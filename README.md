@@ -20,21 +20,32 @@ See [QUICKSTART.md](QUICKSTART.md) for a complete tutorial.
 
 ## Features
 
-- **Dual-Pane Interface**: Navigate two directories simultaneously
+- **Dual-Pane Interface**: Navigate two directories simultaneously with column view (Name, Extension, Modified Date, Size)
 - **Keyboard Navigation**: Arrow keys for file selection, TAB to switch between panes
 - **File Operations**:
   - Copy files/directories (F5 or Ctrl+C)
   - Move files/directories (F6 or Ctrl+X)
   - Delete files/directories (F8 or Ctrl+D)
   - Rename files (Ctrl+R)
-  - Edit files (Ctrl+E)
   - Create directories (Ctrl+N)
-- **Search**: Ctrl+F to search for files in current directory
+- **Built-in Text Editor** (Ctrl+E):
+  - Line numbers displayed
+  - Full cursor navigation (arrows, Home, End, PgUp, PgDn)
+  - Insert, delete, and edit text
+  - Save with Ctrl+S, exit with Ctrl+Q/ESC
+  - Unsaved changes warning
+- **Recursive File Search** (Ctrl+F):
+  - Searches all subdirectories
+  - Displays results in a dedicated pane with Type, Name, and Location columns
+  - Navigate results and jump directly to the containing folder
+- **Go to Folder** (Ctrl+G): Manually enter a path to navigate to (supports `~` for home directory)
 - **Visual Indicators**: 
   - Directories shown in brackets [dirname]
-  - File sizes displayed
+  - File extension, modification date, and size columns
   - Active pane highlighted
   - Current path shown at top of each pane
+  - Column headers for file listings
+- **Status Bar**: Always-visible keyboard shortcuts with status messages that auto-clear after 10 seconds
 
 ## Installation
 
@@ -101,24 +112,47 @@ terminalcommander.exe
 
 ### Keyboard Shortcuts
 
+#### File Browser
+
 | Key | Action |
 |-----|--------|
 | ↑/↓ | Move selection up/down |
-| Enter | Enter directory / Select file |
+| Enter | Enter directory |
 | Backspace | Go to parent directory |
 | Tab | Switch between left and right pane |
 | F5 / Ctrl+C | Copy selected file/directory to other pane |
 | F6 / Ctrl+X | Move selected file/directory to other pane |
 | F8 / Ctrl+D / Delete | Delete selected file/directory |
 | Ctrl+R | Rename file/directory |
-| Ctrl+E | Edit file with default editor |
-| Ctrl+F | Search for file in current directory |
+| Ctrl+E | Edit file with built-in editor |
+| Ctrl+F | Recursive search for files |
+| Ctrl+G | Go to folder (enter path manually) |
 | Ctrl+N | Create new directory |
 | Ctrl+Q / ESC | Quit application |
 
-### Environment Variables
+#### Built-in Editor
 
-- `EDITOR`: Specify your preferred text editor for Ctrl+E (defaults to nano/vi on Linux, notepad on Windows)
+| Key | Action |
+|-----|--------|
+| ↑/↓/←/→ | Move cursor |
+| Home / End | Go to start/end of line |
+| PgUp / PgDn | Page up/down |
+| Tab | Insert 4 spaces |
+| Enter | Create new line |
+| Backspace | Delete character before cursor |
+| Delete | Delete character at cursor |
+| Ctrl+S | Save file |
+| Ctrl+Q / ESC | Exit editor (warns if unsaved) |
+
+#### Search Results
+
+| Key | Action |
+|-----|--------|
+| ↑/↓ | Move selection |
+| PgUp / PgDn | Page through results |
+| Home / End | Jump to first/last result |
+| Enter | Go to folder containing selected file |
+| ESC | Cancel and return to file browser |
 
 ## Cross-Platform Compatibility
 
