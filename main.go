@@ -57,6 +57,14 @@ type SearchResult struct {
 	RelPath string
 }
 
+type DiffBlock struct {
+	LeftStart  int
+	LeftEnd    int
+	RightStart int
+	RightEnd   int
+	Type       string // "add", "delete", "modify", "equal"
+}
+
 type Commander struct {
 	screen        tcell.Screen
 	leftPane      *Pane
@@ -98,6 +106,21 @@ type Commander struct {
 	archiveSelectionMode bool
 	archiveFormats       []string
 	archiveSelectedIdx   int
+	// Diff mode state
+	diffMode          bool
+	diffLeftLines     []string
+	diffRightLines    []string
+	diffLeftPath      string
+	diffRightPath     string
+	diffLeftModified  bool
+	diffRightModified bool
+	diffCurrentIdx    int // Current difference being viewed
+	diffDifferences   []DiffBlock
+	diffScrollY       int
+	diffActiveSide    int  // 0 for left, 1 for right
+	diffEditMode      bool
+	diffCursorX       int
+	diffCursorY       int
 }
 
 func NewCommander() (*Commander, error) {
@@ -168,6 +191,10 @@ func (c *Commander) Run() error {
 }
 
 func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
+	if c.diffMode {
+		return c.handleDiffInput(ev)
+	}
+
 	if c.editorMode {
 		return c.handleEditorKey(ev)
 	}
@@ -245,6 +272,8 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 		c.startHashSelection()
 	case tcell.KeyCtrlA:
 		c.startArchiveSelection()
+	case tcell.KeyF3:
+		c.enterDiffMode()
 	}
 
 	return false
@@ -2033,6 +2062,12 @@ func (c *Commander) updateLayout() {
 }
 
 func (c *Commander) draw() {
+	// Check if in diff mode
+	if c.diffMode {
+		c.drawDiff()
+		return
+	}
+
 	// Check if in editor mode
 	if c.editorMode {
 		c.drawEditor()
@@ -2316,6 +2351,765 @@ func copyDir(src, dst string) error {
 
 		return copyFile(path, dstPath)
 	})
+}
+
+// enterDiffMode validates and enters diff mode
+func (c *Commander) enterDiffMode() {
+	// Check both panes have files selected
+	if len(c.leftPane.Files) == 0 || len(c.rightPane.Files) == 0 {
+		c.setStatus("Both panes must have a file selected")
+		return
+	}
+
+	leftFile := c.leftPane.Files[c.leftPane.SelectedIdx]
+	rightFile := c.rightPane.Files[c.rightPane.SelectedIdx]
+
+	// Check both are files (not directories)
+	if leftFile.IsDir || rightFile.IsDir {
+		c.setStatus("Both selections must be files, not directories")
+		return
+	}
+
+	// Check neither is parent directory link
+	if leftFile.Name == ".." || rightFile.Name == ".." {
+		c.setStatus("Cannot diff parent directory link")
+		return
+	}
+
+	// Read left file
+	leftContent, err := os.ReadFile(leftFile.Path)
+	if err != nil {
+		c.setStatus("Error reading left file: " + err.Error())
+		return
+	}
+
+	// Read right file
+	rightContent, err := os.ReadFile(rightFile.Path)
+	if err != nil {
+		c.setStatus("Error reading right file: " + err.Error())
+		return
+	}
+
+	// Check if files are text files (basic check)
+	if !isTextFile(leftContent) || !isTextFile(rightContent) {
+		c.setStatus("Both files must be readable text files")
+		return
+	}
+
+	// Split into lines
+	c.diffLeftLines = strings.Split(string(leftContent), "\n")
+	c.diffRightLines = strings.Split(string(rightContent), "\n")
+	
+	// Remove trailing empty line if file ends with newline
+	if len(c.diffLeftLines) > 0 && c.diffLeftLines[len(c.diffLeftLines)-1] == "" {
+		c.diffLeftLines = c.diffLeftLines[:len(c.diffLeftLines)-1]
+	}
+	if len(c.diffRightLines) > 0 && c.diffRightLines[len(c.diffRightLines)-1] == "" {
+		c.diffRightLines = c.diffRightLines[:len(c.diffRightLines)-1]
+	}
+	
+	// Ensure at least one line
+	if len(c.diffLeftLines) == 0 {
+		c.diffLeftLines = []string{""}
+	}
+	if len(c.diffRightLines) == 0 {
+		c.diffRightLines = []string{""}
+	}
+
+	c.diffLeftPath = leftFile.Path
+	c.diffRightPath = rightFile.Path
+	c.diffLeftModified = false
+	c.diffRightModified = false
+	c.diffCurrentIdx = 0
+	c.diffScrollY = 0
+	c.diffActiveSide = 0
+	c.diffEditMode = false
+	c.diffCursorX = 0
+	c.diffCursorY = 0
+
+	// Calculate differences
+	c.calculateDiff()
+
+	c.diffMode = true
+	c.setStatus("Diff mode: F3/ESC:Exit n:Next p:Prev >:Copy→ <:Copy← e:Edit Ctrl+S:Save")
+}
+
+// isTextFile checks if content appears to be text
+func isTextFile(content []byte) bool {
+	// Check for null bytes (binary file indicator)
+	for i := 0; i < len(content) && i < 8192; i++ {
+		if content[i] == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// calculateDiff computes differences between left and right files
+func (c *Commander) calculateDiff() {
+	c.diffDifferences = []DiffBlock{}
+	
+	leftLen := len(c.diffLeftLines)
+	rightLen := len(c.diffRightLines)
+	
+	// Simple line-by-line comparison algorithm
+	// This is a basic implementation; Myers diff would be more sophisticated
+	leftIdx := 0
+	rightIdx := 0
+	
+	for leftIdx < leftLen || rightIdx < rightLen {
+		// Check if lines match
+		if leftIdx < leftLen && rightIdx < rightLen && c.diffLeftLines[leftIdx] == c.diffRightLines[rightIdx] {
+			// Equal block
+			equalStart := leftIdx
+			for leftIdx < leftLen && rightIdx < rightLen && c.diffLeftLines[leftIdx] == c.diffRightLines[rightIdx] {
+				leftIdx++
+				rightIdx++
+			}
+			c.diffDifferences = append(c.diffDifferences, DiffBlock{
+				LeftStart:  equalStart,
+				LeftEnd:    leftIdx - 1,
+				RightStart: equalStart,
+				RightEnd:   rightIdx - 1,
+				Type:       "equal",
+			})
+		} else {
+			// Different block - find the extent
+			diffLeftStart := leftIdx
+			diffRightStart := rightIdx
+			
+			// Advance through differences until we find a match or reach end
+			foundMatch := false
+			for !foundMatch && (leftIdx < leftLen || rightIdx < rightLen) {
+				// Look ahead to find matching lines
+				if leftIdx < leftLen && rightIdx < rightLen {
+					// Check if current lines match
+					if c.diffLeftLines[leftIdx] == c.diffRightLines[rightIdx] {
+						foundMatch = true
+						break
+					}
+					
+					// Look ahead a few lines to find sync point
+					matchFound := false
+					for lookAhead := 1; lookAhead <= 3 && !matchFound; lookAhead++ {
+						if leftIdx+lookAhead < leftLen && c.diffLeftLines[leftIdx+lookAhead] == c.diffRightLines[rightIdx] {
+							// Found match, advance left
+							leftIdx++
+							matchFound = true
+							break
+						}
+						if rightIdx+lookAhead < rightLen && c.diffLeftLines[leftIdx] == c.diffRightLines[rightIdx+lookAhead] {
+							// Found match, advance right
+							rightIdx++
+							matchFound = true
+							break
+						}
+					}
+					
+					if !matchFound {
+						// No match found nearby, advance both
+						leftIdx++
+						rightIdx++
+					}
+				} else if leftIdx < leftLen {
+					leftIdx++
+				} else {
+					rightIdx++
+				}
+			}
+			
+			// Determine type of difference
+			diffType := "modify"
+			if diffLeftStart >= leftLen {
+				diffType = "add" // Lines only in right
+			} else if diffRightStart >= rightLen {
+				diffType = "delete" // Lines only in left
+			} else if leftIdx-diffLeftStart == 0 {
+				diffType = "add"
+			} else if rightIdx-diffRightStart == 0 {
+				diffType = "delete"
+			}
+			
+			if diffLeftStart < leftIdx || diffRightStart < rightIdx {
+				c.diffDifferences = append(c.diffDifferences, DiffBlock{
+					LeftStart:  diffLeftStart,
+					LeftEnd:    leftIdx - 1,
+					RightStart: diffRightStart,
+					RightEnd:   rightIdx - 1,
+					Type:       diffType,
+				})
+			}
+		}
+	}
+	
+	// If no differences found, add one equal block for the whole file
+	if len(c.diffDifferences) == 0 {
+		c.diffDifferences = append(c.diffDifferences, DiffBlock{
+			LeftStart:  0,
+			LeftEnd:    leftLen - 1,
+			RightStart: 0,
+			RightEnd:   rightLen - 1,
+			Type:       "equal",
+		})
+	}
+}
+
+// drawDiff renders the diff view
+func (c *Commander) drawDiff() {
+	c.screen.Clear()
+	width, height := c.screen.Size()
+	
+	// Styles
+	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
+	normalStyle := tcell.StyleDefault
+	deleteStyle := tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorWhite)
+	addStyle := tcell.StyleDefault.Background(tcell.ColorDarkGreen).Foreground(tcell.ColorWhite)
+	modifyStyle := tcell.StyleDefault.Background(tcell.ColorDarkGoldenrod).Foreground(tcell.ColorWhite)
+	lineNumStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(tcell.ColorDarkGray)
+	
+	// Calculate pane widths
+	halfWidth := (width - 1) / 2
+	lineNumWidth := 5
+	
+	// Draw headers
+	leftHeader := " Left: " + filepath.Base(c.diffLeftPath)
+	if c.diffLeftModified {
+		leftHeader += " [modified]"
+	}
+	if len(leftHeader) > halfWidth {
+		leftHeader = leftHeader[:halfWidth-3] + "..."
+	}
+	c.drawText(0, 0, halfWidth, headerStyle, leftHeader)
+	
+	rightHeader := " Right: " + filepath.Base(c.diffRightPath)
+	if c.diffRightModified {
+		rightHeader += " [modified]"
+	}
+	if len(rightHeader) > halfWidth {
+		rightHeader = rightHeader[:halfWidth-3] + "..."
+	}
+	c.drawText(halfWidth+1, 0, halfWidth, headerStyle, rightHeader)
+	
+	// Draw separator
+	for y := 0; y < height-1; y++ {
+		c.screen.SetContent(halfWidth, y, '│', nil, tcell.StyleDefault)
+	}
+	
+	// Draw file contents
+	visibleHeight := height - 2 // Leave room for header and status
+	maxLines := len(c.diffLeftLines)
+	if len(c.diffRightLines) > maxLines {
+		maxLines = len(c.diffRightLines)
+	}
+	
+	for y := 0; y < visibleHeight; y++ {
+		lineIdx := c.diffScrollY + y
+		screenY := y + 1
+		
+		if lineIdx >= maxLines {
+			break
+		}
+		
+		// Determine line style based on differences
+		leftStyle := normalStyle
+		rightStyle := normalStyle
+		
+		for _, diff := range c.diffDifferences {
+			if lineIdx >= diff.LeftStart && lineIdx <= diff.LeftEnd {
+				if diff.Type == "delete" {
+					leftStyle = deleteStyle
+				} else if diff.Type == "modify" {
+					leftStyle = modifyStyle
+				}
+			}
+			if lineIdx >= diff.RightStart && lineIdx <= diff.RightEnd {
+				if diff.Type == "add" {
+					rightStyle = addStyle
+				} else if diff.Type == "modify" {
+					rightStyle = modifyStyle
+				}
+			}
+		}
+		
+		// Draw left side
+		leftLineNum := ""
+		leftContent := ""
+		if lineIdx < len(c.diffLeftLines) {
+			leftLineNum = fmt.Sprintf("%4d ", lineIdx+1)
+			leftContent = c.diffLeftLines[lineIdx]
+		}
+		
+		// Draw left line number
+		for i, ch := range leftLineNum {
+			c.screen.SetContent(i, screenY, ch, nil, lineNumStyle)
+		}
+		
+		// Draw left content
+		maxContentWidth := halfWidth - lineNumWidth
+		for x := 0; x < maxContentWidth; x++ {
+			var ch rune = ' '
+			if x < len(leftContent) {
+				ch = rune(leftContent[x])
+			}
+			c.screen.SetContent(lineNumWidth+x, screenY, ch, nil, leftStyle)
+		}
+		
+		// Draw right side
+		rightLineNum := ""
+		rightContent := ""
+		if lineIdx < len(c.diffRightLines) {
+			rightLineNum = fmt.Sprintf("%4d ", lineIdx+1)
+			rightContent = c.diffRightLines[lineIdx]
+		}
+		
+		// Draw right line number
+		for i, ch := range rightLineNum {
+			c.screen.SetContent(halfWidth+1+i, screenY, ch, nil, lineNumStyle)
+		}
+		
+		// Draw right content
+		for x := 0; x < maxContentWidth; x++ {
+			var ch rune = ' '
+			if x < len(rightContent) {
+				ch = rune(rightContent[x])
+			}
+			c.screen.SetContent(halfWidth+1+lineNumWidth+x, screenY, ch, nil, rightStyle)
+		}
+	}
+	
+	// Draw status bar
+	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	statusText := c.statusMsg
+	if statusText == "" {
+		diffCount := 0
+		for _, d := range c.diffDifferences {
+			if d.Type != "equal" {
+				diffCount++
+			}
+		}
+		statusText = fmt.Sprintf("F3/ESC:Exit n:Next p:Prev >:Copy→ <:Copy← e:Edit Ctrl+S:Save | %d differences", diffCount)
+	}
+	if len(statusText) > width {
+		statusText = statusText[:width]
+	}
+	c.drawText(0, height-1, width, statusStyle, statusText)
+	
+	c.screen.Show()
+}
+
+// handleDiffInput handles keyboard input in diff mode
+func (c *Commander) handleDiffInput(ev *tcell.EventKey) bool {
+	// Handle edit mode within diff
+	if c.diffEditMode {
+		return c.handleDiffEditKey(ev)
+	}
+	
+	switch ev.Key() {
+	case tcell.KeyEscape, tcell.KeyF3:
+		return c.exitDiffMode()
+	case tcell.KeyCtrlQ:
+		return c.exitDiffMode()
+	case tcell.KeyUp:
+		if c.diffScrollY > 0 {
+			c.diffScrollY--
+		}
+	case tcell.KeyDown:
+		maxLines := len(c.diffLeftLines)
+		if len(c.diffRightLines) > maxLines {
+			maxLines = len(c.diffRightLines)
+		}
+		if c.diffScrollY < maxLines-1 {
+			c.diffScrollY++
+		}
+	case tcell.KeyPgUp:
+		_, height := c.screen.Size()
+		pageSize := height - 2
+		c.diffScrollY -= pageSize
+		if c.diffScrollY < 0 {
+			c.diffScrollY = 0
+		}
+	case tcell.KeyPgDn:
+		_, height := c.screen.Size()
+		pageSize := height - 2
+		maxLines := len(c.diffLeftLines)
+		if len(c.diffRightLines) > maxLines {
+			maxLines = len(c.diffRightLines)
+		}
+		c.diffScrollY += pageSize
+		if c.diffScrollY >= maxLines {
+			c.diffScrollY = maxLines - 1
+		}
+		if c.diffScrollY < 0 {
+			c.diffScrollY = 0
+		}
+	case tcell.KeyRune:
+		switch ev.Rune() {
+		case 'n', 'N':
+			c.jumpToNextDiff()
+		case 'p', 'P':
+			c.jumpToPrevDiff()
+		case '>':
+			c.copyDiffLeftToRight()
+		case '<':
+			c.copyDiffRightToLeft()
+		case 'e', 'E':
+			c.enterDiffEditMode()
+		}
+	case tcell.KeyCtrlS:
+		c.saveDiffFiles()
+	}
+	
+	return false
+}
+
+// handleDiffEditKey handles keyboard input in diff edit mode
+func (c *Commander) handleDiffEditKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyEscape:
+		c.diffEditMode = false
+		c.calculateDiff()
+		c.setStatus("Edit mode exited")
+		return false
+	case tcell.KeyUp:
+		if c.diffCursorY > 0 {
+			c.diffCursorY--
+			lines := c.diffLeftLines
+			if c.diffActiveSide == 1 {
+				lines = c.diffRightLines
+			}
+			if c.diffCursorX > len(lines[c.diffCursorY]) {
+				c.diffCursorX = len(lines[c.diffCursorY])
+			}
+		}
+	case tcell.KeyDown:
+		lines := c.diffLeftLines
+		if c.diffActiveSide == 1 {
+			lines = c.diffRightLines
+		}
+		if c.diffCursorY < len(lines)-1 {
+			c.diffCursorY++
+			if c.diffCursorX > len(lines[c.diffCursorY]) {
+				c.diffCursorX = len(lines[c.diffCursorY])
+			}
+		}
+	case tcell.KeyLeft:
+		if c.diffCursorX > 0 {
+			c.diffCursorX--
+		}
+	case tcell.KeyRight:
+		lines := c.diffLeftLines
+		if c.diffActiveSide == 1 {
+			lines = c.diffRightLines
+		}
+		if c.diffCursorX < len(lines[c.diffCursorY]) {
+			c.diffCursorX++
+		}
+	case tcell.KeyHome:
+		c.diffCursorX = 0
+	case tcell.KeyEnd:
+		lines := c.diffLeftLines
+		if c.diffActiveSide == 1 {
+			lines = c.diffRightLines
+		}
+		c.diffCursorX = len(lines[c.diffCursorY])
+	case tcell.KeyEnter:
+		// Insert new line
+		lines := &c.diffLeftLines
+		if c.diffActiveSide == 1 {
+			lines = &c.diffRightLines
+		}
+		line := (*lines)[c.diffCursorY]
+		leftPart := line[:c.diffCursorX]
+		rightPart := line[c.diffCursorX:]
+		(*lines)[c.diffCursorY] = leftPart
+		newLines := make([]string, len(*lines)+1)
+		copy(newLines, (*lines)[:c.diffCursorY+1])
+		newLines[c.diffCursorY+1] = rightPart
+		copy(newLines[c.diffCursorY+2:], (*lines)[c.diffCursorY+1:])
+		*lines = newLines
+		c.diffCursorY++
+		c.diffCursorX = 0
+		if c.diffActiveSide == 0 {
+			c.diffLeftModified = true
+		} else {
+			c.diffRightModified = true
+		}
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		lines := &c.diffLeftLines
+		if c.diffActiveSide == 1 {
+			lines = &c.diffRightLines
+		}
+		if c.diffCursorX > 0 {
+			line := (*lines)[c.diffCursorY]
+			(*lines)[c.diffCursorY] = line[:c.diffCursorX-1] + line[c.diffCursorX:]
+			c.diffCursorX--
+			if c.diffActiveSide == 0 {
+				c.diffLeftModified = true
+			} else {
+				c.diffRightModified = true
+			}
+		} else if c.diffCursorY > 0 {
+			prevLineLen := len((*lines)[c.diffCursorY-1])
+			(*lines)[c.diffCursorY-1] += (*lines)[c.diffCursorY]
+			*lines = append((*lines)[:c.diffCursorY], (*lines)[c.diffCursorY+1:]...)
+			c.diffCursorY--
+			c.diffCursorX = prevLineLen
+			if c.diffActiveSide == 0 {
+				c.diffLeftModified = true
+			} else {
+				c.diffRightModified = true
+			}
+		}
+	case tcell.KeyDelete:
+		lines := &c.diffLeftLines
+		if c.diffActiveSide == 1 {
+			lines = &c.diffRightLines
+		}
+		line := (*lines)[c.diffCursorY]
+		if c.diffCursorX < len(line) {
+			(*lines)[c.diffCursorY] = line[:c.diffCursorX] + line[c.diffCursorX+1:]
+			if c.diffActiveSide == 0 {
+				c.diffLeftModified = true
+			} else {
+				c.diffRightModified = true
+			}
+		} else if c.diffCursorY < len(*lines)-1 {
+			(*lines)[c.diffCursorY] += (*lines)[c.diffCursorY+1]
+			*lines = append((*lines)[:c.diffCursorY+1], (*lines)[c.diffCursorY+2:]...)
+			if c.diffActiveSide == 0 {
+				c.diffLeftModified = true
+			} else {
+				c.diffRightModified = true
+			}
+		}
+	case tcell.KeyRune:
+		lines := &c.diffLeftLines
+		if c.diffActiveSide == 1 {
+			lines = &c.diffRightLines
+		}
+		line := (*lines)[c.diffCursorY]
+		(*lines)[c.diffCursorY] = line[:c.diffCursorX] + string(ev.Rune()) + line[c.diffCursorX:]
+		c.diffCursorX++
+		if c.diffActiveSide == 0 {
+			c.diffLeftModified = true
+		} else {
+			c.diffRightModified = true
+		}
+	}
+	
+	return false
+}
+
+// jumpToNextDiff jumps to the next difference
+func (c *Commander) jumpToNextDiff() {
+	if len(c.diffDifferences) == 0 {
+		return
+	}
+	
+	// Find next non-equal diff
+	for i := c.diffCurrentIdx + 1; i < len(c.diffDifferences); i++ {
+		if c.diffDifferences[i].Type != "equal" {
+			c.diffCurrentIdx = i
+			c.diffScrollY = c.diffDifferences[i].LeftStart
+			c.setStatus(fmt.Sprintf("Difference %d/%d", i+1, len(c.diffDifferences)))
+			return
+		}
+	}
+	
+	// Wrap around to first diff
+	for i := 0; i <= c.diffCurrentIdx; i++ {
+		if c.diffDifferences[i].Type != "equal" {
+			c.diffCurrentIdx = i
+			c.diffScrollY = c.diffDifferences[i].LeftStart
+			c.setStatus(fmt.Sprintf("Difference %d/%d (wrapped)", i+1, len(c.diffDifferences)))
+			return
+		}
+	}
+	
+	c.setStatus("No differences found")
+}
+
+// jumpToPrevDiff jumps to the previous difference
+func (c *Commander) jumpToPrevDiff() {
+	if len(c.diffDifferences) == 0 {
+		return
+	}
+	
+	// Find previous non-equal diff
+	for i := c.diffCurrentIdx - 1; i >= 0; i-- {
+		if c.diffDifferences[i].Type != "equal" {
+			c.diffCurrentIdx = i
+			c.diffScrollY = c.diffDifferences[i].LeftStart
+			c.setStatus(fmt.Sprintf("Difference %d/%d", i+1, len(c.diffDifferences)))
+			return
+		}
+	}
+	
+	// Wrap around to last diff
+	for i := len(c.diffDifferences) - 1; i >= c.diffCurrentIdx; i-- {
+		if c.diffDifferences[i].Type != "equal" {
+			c.diffCurrentIdx = i
+			c.diffScrollY = c.diffDifferences[i].LeftStart
+			c.setStatus(fmt.Sprintf("Difference %d/%d (wrapped)", i+1, len(c.diffDifferences)))
+			return
+		}
+	}
+	
+	c.setStatus("No differences found")
+}
+
+// copyDiffLeftToRight copies current difference from left to right
+func (c *Commander) copyDiffLeftToRight() {
+	if c.diffCurrentIdx < 0 || c.diffCurrentIdx >= len(c.diffDifferences) {
+		c.setStatus("No difference selected")
+		return
+	}
+	
+	diff := c.diffDifferences[c.diffCurrentIdx]
+	if diff.Type == "equal" {
+		c.setStatus("No difference at current position")
+		return
+	}
+	
+	// Extract lines from left
+	var leftLines []string
+	if diff.LeftStart <= diff.LeftEnd && diff.LeftEnd < len(c.diffLeftLines) {
+		leftLines = make([]string, diff.LeftEnd-diff.LeftStart+1)
+		copy(leftLines, c.diffLeftLines[diff.LeftStart:diff.LeftEnd+1])
+	}
+	
+	// Replace in right
+	newRight := []string{}
+	newRight = append(newRight, c.diffRightLines[:diff.RightStart]...)
+	newRight = append(newRight, leftLines...)
+	if diff.RightEnd+1 < len(c.diffRightLines) {
+		newRight = append(newRight, c.diffRightLines[diff.RightEnd+1:]...)
+	}
+	
+	c.diffRightLines = newRight
+	c.diffRightModified = true
+	c.calculateDiff()
+	c.setStatus("Copied left → right")
+}
+
+// copyDiffRightToLeft copies current difference from right to left
+func (c *Commander) copyDiffRightToLeft() {
+	if c.diffCurrentIdx < 0 || c.diffCurrentIdx >= len(c.diffDifferences) {
+		c.setStatus("No difference selected")
+		return
+	}
+	
+	diff := c.diffDifferences[c.diffCurrentIdx]
+	if diff.Type == "equal" {
+		c.setStatus("No difference at current position")
+		return
+	}
+	
+	// Extract lines from right
+	var rightLines []string
+	if diff.RightStart <= diff.RightEnd && diff.RightEnd < len(c.diffRightLines) {
+		rightLines = make([]string, diff.RightEnd-diff.RightStart+1)
+		copy(rightLines, c.diffRightLines[diff.RightStart:diff.RightEnd+1])
+	}
+	
+	// Replace in left
+	newLeft := []string{}
+	newLeft = append(newLeft, c.diffLeftLines[:diff.LeftStart]...)
+	newLeft = append(newLeft, rightLines...)
+	if diff.LeftEnd+1 < len(c.diffLeftLines) {
+		newLeft = append(newLeft, c.diffLeftLines[diff.LeftEnd+1:]...)
+	}
+	
+	c.diffLeftLines = newLeft
+	c.diffLeftModified = true
+	c.calculateDiff()
+	c.setStatus("Copied right → left")
+}
+
+// enterDiffEditMode enters edit mode for the active side
+func (c *Commander) enterDiffEditMode() {
+	c.diffEditMode = true
+	c.diffCursorX = 0
+	c.diffCursorY = c.diffScrollY
+	if c.diffCursorY < 0 {
+		c.diffCursorY = 0
+	}
+	lines := c.diffLeftLines
+	if c.diffActiveSide == 1 {
+		lines = c.diffRightLines
+	}
+	if c.diffCursorY >= len(lines) {
+		c.diffCursorY = len(lines) - 1
+	}
+	c.setStatus("Edit mode: ESC to exit, changes auto-saved")
+}
+
+// saveDiffFiles saves modified files
+func (c *Commander) saveDiffFiles() {
+	savedCount := 0
+	
+	if c.diffLeftModified {
+		content := strings.Join(c.diffLeftLines, "\n") + "\n"
+		err := os.WriteFile(c.diffLeftPath, []byte(content), 0644)
+		if err != nil {
+			c.setStatus("Error saving left file: " + err.Error())
+			return
+		}
+		c.diffLeftModified = false
+		savedCount++
+	}
+	
+	if c.diffRightModified {
+		content := strings.Join(c.diffRightLines, "\n") + "\n"
+		err := os.WriteFile(c.diffRightPath, []byte(content), 0644)
+		if err != nil {
+			c.setStatus("Error saving right file: " + err.Error())
+			return
+		}
+		c.diffRightModified = false
+		savedCount++
+	}
+	
+	if savedCount == 0 {
+		c.setStatus("No changes to save")
+	} else if savedCount == 1 {
+		c.setStatus("Saved 1 file")
+	} else {
+		c.setStatus("Saved both files")
+	}
+}
+
+// exitDiffMode exits diff mode with unsaved changes warning
+func (c *Commander) exitDiffMode() bool {
+	if c.diffLeftModified || c.diffRightModified {
+		// Simple warning - in a real implementation, would use a dialog
+		c.setStatus("Unsaved changes! Press Ctrl+S to save, ESC again to discard")
+		if !c.diffLeftModified && !c.diffRightModified {
+			// Second press - actually exit
+			c.diffMode = false
+			c.diffLeftLines = nil
+			c.diffRightLines = nil
+			c.diffDifferences = nil
+			c.setStatus("Diff mode exited")
+			c.refreshPane(c.leftPane)
+			c.refreshPane(c.rightPane)
+			return false
+		}
+		// First press with unsaved changes - clear flags so second press exits
+		c.diffLeftModified = false
+		c.diffRightModified = false
+		return false
+	}
+	
+	// No unsaved changes, exit immediately
+	c.diffMode = false
+	c.diffLeftLines = nil
+	c.diffRightLines = nil
+	c.diffDifferences = nil
+	c.setStatus("Diff mode exited")
+	c.refreshPane(c.leftPane)
+	c.refreshPane(c.rightPane)
+	return false
 }
 
 func main() {

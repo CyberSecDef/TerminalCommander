@@ -426,3 +426,246 @@ func TestCreateZipArchiveWithSpaces(t *testing.T) {
 		t.Error("Archive file was not created")
 	}
 }
+
+func TestIsTextFile(t *testing.T) {
+tests := []struct {
+name    string
+content []byte
+want    bool
+}{
+{"Plain text", []byte("Hello, World!"), true},
+{"Empty", []byte(""), true},
+{"With newlines", []byte("Line 1\nLine 2\nLine 3"), true},
+{"Binary with null", []byte{0x00, 0x01, 0x02}, false},
+{"UTF-8 text", []byte("Hello 世界"), true},
+}
+
+for _, tt := range tests {
+t.Run(tt.name, func(t *testing.T) {
+got := isTextFile(tt.content)
+if got != tt.want {
+t.Errorf("isTextFile() = %v, want %v", got, tt.want)
+}
+})
+}
+}
+
+func TestCalculateDiff(t *testing.T) {
+tmpDir := t.TempDir()
+
+// Create test files
+file1 := filepath.Join(tmpDir, "file1.txt")
+file2 := filepath.Join(tmpDir, "file2.txt")
+
+content1 := "Line 1\nLine 2\nLine 3\n"
+content2 := "Line 1\nLine 2 modified\nLine 3\n"
+
+os.WriteFile(file1, []byte(content1), 0644)
+os.WriteFile(file2, []byte(content2), 0644)
+
+cmd := &Commander{
+diffLeftLines:  []string{"Line 1", "Line 2", "Line 3"},
+diffRightLines: []string{"Line 1", "Line 2 modified", "Line 3"},
+}
+
+cmd.calculateDiff()
+
+// Should have detected differences
+if len(cmd.diffDifferences) == 0 {
+t.Error("Expected differences to be found")
+}
+
+// Check for non-equal blocks
+hasNonEqual := false
+for _, diff := range cmd.diffDifferences {
+if diff.Type != "equal" {
+hasNonEqual = true
+break
+}
+}
+
+if !hasNonEqual {
+t.Error("Expected at least one non-equal diff block")
+}
+}
+
+func TestCalculateDiffIdentical(t *testing.T) {
+cmd := &Commander{
+diffLeftLines:  []string{"Line 1", "Line 2", "Line 3"},
+diffRightLines: []string{"Line 1", "Line 2", "Line 3"},
+}
+
+cmd.calculateDiff()
+
+// Should have at least one block
+if len(cmd.diffDifferences) == 0 {
+t.Error("Expected at least one diff block")
+}
+
+// All blocks should be equal
+for _, diff := range cmd.diffDifferences {
+if diff.Type != "equal" {
+t.Errorf("Expected all blocks to be equal, got %s", diff.Type)
+}
+}
+}
+
+func TestEnterDiffMode(t *testing.T) {
+tmpDir := t.TempDir()
+
+// Create test files
+file1 := filepath.Join(tmpDir, "file1.txt")
+file2 := filepath.Join(tmpDir, "file2.txt")
+
+os.WriteFile(file1, []byte("Line 1\nLine 2\n"), 0644)
+os.WriteFile(file2, []byte("Line 1\nLine 2 modified\n"), 0644)
+
+// Create panes with test files
+leftPane := &Pane{
+CurrentPath: tmpDir,
+Files: []FileItem{
+{Name: "file1.txt", Path: file1, IsDir: false},
+},
+SelectedIdx: 0,
+}
+
+rightPane := &Pane{
+CurrentPath: tmpDir,
+Files: []FileItem{
+{Name: "file2.txt", Path: file2, IsDir: false},
+},
+SelectedIdx: 0,
+}
+
+cmd := &Commander{
+leftPane:  leftPane,
+rightPane: rightPane,
+}
+
+cmd.enterDiffMode()
+
+// Check that diff mode was entered
+if !cmd.diffMode {
+t.Error("Expected diff mode to be active")
+}
+
+// Check that lines were loaded
+if len(cmd.diffLeftLines) == 0 {
+t.Error("Expected left lines to be loaded")
+}
+
+if len(cmd.diffRightLines) == 0 {
+t.Error("Expected right lines to be loaded")
+}
+
+// Check that differences were calculated
+if len(cmd.diffDifferences) == 0 {
+t.Error("Expected differences to be calculated")
+}
+}
+
+func TestEnterDiffModeWithDirectories(t *testing.T) {
+tmpDir := t.TempDir()
+
+// Create a directory
+subdir := filepath.Join(tmpDir, "subdir")
+os.MkdirAll(subdir, 0755)
+
+leftPane := &Pane{
+CurrentPath: tmpDir,
+Files: []FileItem{
+{Name: "subdir", Path: subdir, IsDir: true},
+},
+SelectedIdx: 0,
+}
+
+rightPane := &Pane{
+CurrentPath: tmpDir,
+Files: []FileItem{
+{Name: "subdir", Path: subdir, IsDir: true},
+},
+SelectedIdx: 0,
+}
+
+cmd := &Commander{
+leftPane:  leftPane,
+rightPane: rightPane,
+}
+
+cmd.enterDiffMode()
+
+// Should not enter diff mode with directories
+if cmd.diffMode {
+t.Error("Should not enter diff mode with directories")
+}
+}
+
+func TestCopyDiffLeftToRight(t *testing.T) {
+cmd := &Commander{
+diffLeftLines:  []string{"Line 1", "Line 2", "Line 3"},
+diffRightLines: []string{"Line 1", "Line 2 modified", "Line 3"},
+diffDifferences: []DiffBlock{
+{LeftStart: 0, LeftEnd: 0, RightStart: 0, RightEnd: 0, Type: "equal"},
+{LeftStart: 1, LeftEnd: 1, RightStart: 1, RightEnd: 1, Type: "modify"},
+{LeftStart: 2, LeftEnd: 2, RightStart: 2, RightEnd: 2, Type: "equal"},
+},
+diffCurrentIdx: 1,
+}
+
+cmd.copyDiffLeftToRight()
+
+// Check that right was modified
+if !cmd.diffRightModified {
+t.Error("Expected right file to be marked as modified")
+}
+}
+
+func TestSaveDiffFiles(t *testing.T) {
+tmpDir := t.TempDir()
+
+leftFile := filepath.Join(tmpDir, "left.txt")
+rightFile := filepath.Join(tmpDir, "right.txt")
+
+// Create initial files
+os.WriteFile(leftFile, []byte("original left\n"), 0644)
+os.WriteFile(rightFile, []byte("original right\n"), 0644)
+
+cmd := &Commander{
+diffLeftPath:      leftFile,
+diffRightPath:     rightFile,
+diffLeftLines:     []string{"modified left"},
+diffRightLines:    []string{"modified right"},
+diffLeftModified:  true,
+diffRightModified: true,
+}
+
+cmd.saveDiffFiles()
+
+// Check that files were saved
+leftContent, err := os.ReadFile(leftFile)
+if err != nil {
+t.Fatalf("Failed to read left file: %v", err)
+}
+
+if string(leftContent) != "modified left\n" {
+t.Errorf("Left file content = %q, want %q", leftContent, "modified left\n")
+}
+
+rightContent, err := os.ReadFile(rightFile)
+if err != nil {
+t.Fatalf("Failed to read right file: %v", err)
+}
+
+if string(rightContent) != "modified right\n" {
+t.Errorf("Right file content = %q, want %q", rightContent, "modified right\n")
+}
+
+// Check that modified flags were cleared
+if cmd.diffLeftModified {
+t.Error("Expected left modified flag to be cleared")
+}
+
+if cmd.diffRightModified {
+t.Error("Expected right modified flag to be cleared")
+}
+}
