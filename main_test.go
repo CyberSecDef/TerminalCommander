@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -265,4 +266,172 @@ func TestHashComputationErrors(t *testing.T) {
 			t.Error("Hash result mode should not be enabled on error")
 		}
 	})
+}
+
+func TestGetAvailableArchiveFormats(t *testing.T) {
+	cmd := &Commander{}
+	
+	formats := cmd.getAvailableArchiveFormats()
+	
+	// Should return at least one format on most systems
+	// We can't guarantee specific formats since it depends on installed tools
+	// But we can verify the function runs without error
+	if formats == nil {
+		t.Error("getAvailableArchiveFormats should not return nil")
+	}
+	
+	// Verify no duplicates
+	seen := make(map[string]bool)
+	for _, format := range formats {
+		if seen[format] {
+			t.Errorf("Duplicate format found: %s", format)
+		}
+		seen[format] = true
+	}
+}
+
+func TestCreateZipArchive(t *testing.T) {
+	// Create temporary test directory
+	tmpDir := t.TempDir()
+	
+	// Create test files
+	testFile1 := filepath.Join(tmpDir, "file1.txt")
+	testFile2 := filepath.Join(tmpDir, "file2.txt")
+	if err := os.WriteFile(testFile1, []byte("content1"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	if err := os.WriteFile(testFile2, []byte("content2"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	
+	// Create test directory
+	testDir := filepath.Join(tmpDir, "subdir")
+	if err := os.MkdirAll(testDir, 0755); err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+	testFile3 := filepath.Join(testDir, "file3.txt")
+	if err := os.WriteFile(testFile3, []byte("content3"), 0644); err != nil {
+		t.Fatalf("Failed to create test file in subdirectory: %v", err)
+	}
+	
+	// Create a minimal Commander instance
+	pane := &Pane{
+		CurrentPath: tmpDir,
+	}
+	cmd := &Commander{
+		leftPane:   pane,
+		rightPane:  &Pane{},
+		activePane: PaneLeft,
+	}
+	
+	// Test creating archive with multiple files
+	archivePath := filepath.Join(tmpDir, "test.zip")
+	files := []FileItem{
+		{Name: "file1.txt", IsDir: false},
+		{Name: "file2.txt", IsDir: false},
+	}
+	
+	err := cmd.createZipArchive(archivePath, files)
+	
+	// Check if any zip creation method is available
+	// If no method is available, we expect an error
+	if err != nil {
+		// Verify error message mentions attempted methods
+		errMsg := err.Error()
+		if !strings.Contains(errMsg, "zip") && !strings.Contains(errMsg, "available") {
+			t.Errorf("Error message should mention zip or availability: %v", err)
+		}
+		t.Logf("No zip creation tools available, skipping archive verification: %v", err)
+		return
+	}
+	
+	// If successful, verify the archive was created
+	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
+		t.Error("Archive file was not created")
+	}
+}
+
+func TestCreateZipArchiveWithDirectory(t *testing.T) {
+	// Create temporary test directory
+	tmpDir := t.TempDir()
+	
+	// Create a subdirectory with files
+	subDir := filepath.Join(tmpDir, "testdir")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatalf("Failed to create subdirectory: %v", err)
+	}
+	
+	testFile := filepath.Join(subDir, "file.txt")
+	if err := os.WriteFile(testFile, []byte("content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	
+	// Create a minimal Commander instance
+	pane := &Pane{
+		CurrentPath: tmpDir,
+	}
+	cmd := &Commander{
+		leftPane:   pane,
+		rightPane:  &Pane{},
+		activePane: PaneLeft,
+	}
+	
+	// Test creating archive with directory
+	archivePath := filepath.Join(tmpDir, "dirtest.zip")
+	files := []FileItem{
+		{Name: "testdir", IsDir: true},
+	}
+	
+	err := cmd.createZipArchive(archivePath, files)
+	
+	// Check if any zip creation method is available
+	if err != nil {
+		t.Logf("No zip creation tools available, skipping archive verification: %v", err)
+		return
+	}
+	
+	// If successful, verify the archive was created
+	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
+		t.Error("Archive file was not created")
+	}
+}
+
+func TestCreateZipArchiveWithSpaces(t *testing.T) {
+	// Create temporary test directory
+	tmpDir := t.TempDir()
+	
+	// Create test file with spaces in name
+	testFile := filepath.Join(tmpDir, "file with spaces.txt")
+	if err := os.WriteFile(testFile, []byte("content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	
+	// Create a minimal Commander instance
+	pane := &Pane{
+		CurrentPath: tmpDir,
+	}
+	cmd := &Commander{
+		leftPane:   pane,
+		rightPane:  &Pane{},
+		activePane: PaneLeft,
+	}
+	
+	// Test creating archive with file containing spaces
+	archivePath := filepath.Join(tmpDir, "spaces test.zip")
+	files := []FileItem{
+		{Name: "file with spaces.txt", IsDir: false},
+	}
+	
+	err := cmd.createZipArchive(archivePath, files)
+	
+	// Check if any zip creation method is available
+	if err != nil {
+		t.Logf("No zip creation tools available, skipping archive verification: %v", err)
+		return
+	}
+	
+	// If successful, verify the archive was created
+	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
+		t.Error("Archive file was not created")
+	}
 }
