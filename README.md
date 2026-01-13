@@ -39,6 +39,12 @@ See [QUICKSTART.md](QUICKSTART.md) for a complete tutorial.
   - Displays results in a dedicated pane with Type, Name, and Location columns
   - Navigate results and jump directly to the containing folder
 - **Go to Folder** (Ctrl+G): Manually enter a path to navigate to (supports `~` for home directory)
+- **File Hash Verification** (Ctrl+H):
+  - Generate cryptographic hashes for file verification and integrity checking
+  - Support for 10 hash algorithms: MD5, SHA-1, SHA-256, SHA-512, SHA3-256, SHA3-512, BLAKE2b-256, BLAKE2s-256, BLAKE3, RIPEMD-160
+  - Interactive algorithm selection with arrow key navigation
+  - Hash results displayed in hexadecimal format
+  - Progress indication for large files
 - **Visual Indicators**: 
   - Directories shown in brackets [dirname]
   - File extension, modification date, and size columns
@@ -127,6 +133,7 @@ terminalcommander.exe
 | Ctrl+E | Edit file with built-in editor |
 | Ctrl+F | Recursive search for files |
 | Ctrl+G | Go to folder (enter path manually) |
+| Ctrl+H | Generate file hash (select algorithm) |
 | Ctrl+N | Create new directory |
 | Ctrl+Q / ESC | Quit application |
 
@@ -152,6 +159,22 @@ terminalcommander.exe
 | PgUp / PgDn | Page through results |
 | Home / End | Jump to first/last result |
 | Enter | Go to folder containing selected file |
+| ESC | Cancel and return to file browser |
+
+#### Hash Algorithm Selection
+
+| Key | Action |
+|-----|--------|
+| ↑/↓ | Move selection through algorithms |
+| Home / End | Jump to first/last algorithm |
+| Enter | Compute hash with selected algorithm |
+| ESC | Cancel hash operation |
+
+#### Hash Result Display
+
+| Key | Action |
+|-----|--------|
+| Any Key | Close hash result and return to file browser |
 | ESC | Cancel and return to file browser |
 
 ## Cross-Platform Compatibility
