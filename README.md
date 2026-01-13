@@ -56,6 +56,19 @@ See [QUICKSTART.md](QUICKSTART.md) for a complete tutorial.
   - Interactive algorithm selection with arrow key navigation
   - Hash results displayed in hexadecimal format
   - Progress indication for large files
+- **File Diff Engine** (F3):
+  - Side-by-side comparison of files from left and right panes
+  - Color-coded difference highlighting:
+    - Red: Lines only in left file (deleted)
+    - Green: Lines only in right file (added)
+    - Yellow/Orange: Modified lines (exist in both but differ)
+  - Navigation between differences with n/p keys
+  - Merge changes: Copy differences from left→right (>) or right→left (<)
+  - Manual editing within diff mode (e key)
+  - Save modified files with Ctrl+S
+  - Line numbers displayed for both files
+  - Synchronized scrolling
+  - Unsaved changes warning on exit
 - **Visual Indicators**: 
   - Directories shown in brackets [dirname]
   - Selected items marked with `[*]` prefix
@@ -149,7 +162,22 @@ terminalcommander.exe
 | Ctrl+G | Go to folder (enter path manually) |
 | Ctrl+H | Generate file hash (select algorithm) |
 | Ctrl+N | Create new directory |
+| F3 | Compare files (diff mode) |
 | Ctrl+Q / ESC | Quit application |
+
+#### Diff Mode
+
+| Key | Action |
+|-----|--------|
+| ↑/↓ | Scroll through both files simultaneously |
+| PgUp / PgDn | Page through files |
+| n | Jump to next difference |
+| p | Jump to previous difference |
+| > | Copy current difference from left to right |
+| < | Copy current difference from right to left |
+| e | Enter edit mode for manual editing |
+| Ctrl+S | Save modified files |
+| F3 / ESC | Exit diff mode |
 
 #### Built-in Editor
 

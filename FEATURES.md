@@ -289,3 +289,73 @@ Left: /home/user/documents
 3. **Large Directories**: Scroll through with arrow keys, use Ctrl+F to find files
 4. **Dual Monitor Workflow**: Keep two related directories open simultaneously
 5. **Batch Operations**: No need to leave the app - all operations are in-app
+
+### Example 6: File Comparison and Merging with Diff Mode
+```
+Left: /home/user/project/version1    Right: /home/user/project/version2
+1. Navigate to version1 directory (left pane)
+2. Select config.yaml file
+3. Navigate to version2 directory (right pane, Tab to switch)
+4. Select config.yaml file
+5. Press F3 to enter diff mode
+
+Diff View:
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Left: config.yaml                       │ Right: config.yaml                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│    1 server:                            │    1 server:                      │
+│    2   port: 8080                       │    2   port: 8080                 │
+│    3   host: localhost                  │    3   host: 0.0.0.0              │ (yellow)
+│    4 database:                          │    4 database:                    │
+│    5   enabled: false                   │    5   enabled: true              │ (yellow)
+│    6                                    │    6   connection: postgres://... │ (green)
+└─────────────────────────────────────────────────────────────────────────────┘
+F3/ESC:Exit n:Next p:Prev >:Copy→ <:Copy← e:Edit Ctrl+S:Save | 2 differences
+
+6. Press 'n' to jump to next difference (line 3: host change)
+7. Press '>' to copy "host: 0.0.0.0" from right to left
+8. Press 'n' again to jump to next difference (line 5-6: database config)
+9. Press '>' to copy database changes from right to left
+10. Press Ctrl+S to save changes to left file
+11. Press F3 to exit diff mode
+
+Result: version1/config.yaml now has the updated configuration from version2
+```
+
+**Diff Mode Features:**
+- **Color Coding:**
+  - Red background: Lines deleted (only in left)
+  - Green background: Lines added (only in right)
+  - Yellow background: Lines modified (different in both)
+- **Navigation:**
+  - Arrow keys for manual scrolling
+  - 'n' to jump to next difference
+  - 'p' to jump to previous difference
+- **Merging:**
+  - '>' copies current difference left → right
+  - '<' copies current difference right → left
+- **Editing:**
+  - Press 'e' to enter edit mode
+  - Make manual changes with arrow keys and typing
+  - ESC to exit edit mode
+- **Saving:**
+  - Ctrl+S saves both modified files
+  - Modified files show [modified] indicator in header
+
+### Example 7: Quick Code Review with Diff
+```
+Scenario: Review changes made to a source file
+Left: /home/user/backup/main.go     Right: /home/user/project/main.go
+
+1. Navigate to backup folder (left)
+2. Navigate to current project folder (right)
+3. Select main.go in both panes
+4. Press F3 to see what changed
+5. Review each difference with 'n' key
+6. Decide whether to keep, discard, or merge changes
+7. Use '<' to revert unwanted changes (copy from backup to current)
+8. Use '>' to update backup with good changes
+9. Save with Ctrl+S
+```
+6. **File Comparison**: Use F3 to quickly compare and merge changes between files
+7. **Version Control**: Keep backups in one pane and working files in another, use diff to review changes
