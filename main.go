@@ -1,7 +1,13 @@
 package main
 
 import (
+	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,6 +16,11 @@ import (
 	"time"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/zeebo/blake3"
+	"golang.org/x/crypto/blake2b"
+	"golang.org/x/crypto/blake2s"
+	"golang.org/x/crypto/ripemd160"
+	"golang.org/x/crypto/sha3"
 )
 
 const (
@@ -70,6 +81,16 @@ type Commander struct {
 	searchResultIdx    int
 	searchResultScroll int
 	searchBaseDir      string
+	// Hash selection state
+	hashSelectionMode bool
+	hashAlgorithms    []string
+	hashSelectedIdx   int
+	hashFilePath      string
+	// Hash result state
+	hashResultMode     bool
+	hashResult         string
+	hashAlgorithm      string
+	hashResultFilePath string
 }
 
 func NewCommander() (*Commander, error) {
@@ -148,6 +169,14 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 		return c.handleSearchResultsKey(ev)
 	}
 
+	if c.hashSelectionMode {
+		return c.handleHashSelectionKey(ev)
+	}
+
+	if c.hashResultMode {
+		return c.handleHashResultKey(ev)
+	}
+
 	if c.inputMode != "" {
 		return c.handleInputKey(ev)
 	}
@@ -195,6 +224,8 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 		c.createDirectory()
 	case tcell.KeyCtrlG:
 		c.gotoFolder()
+	case tcell.KeyCtrlH:
+		c.startHashSelection()
 	}
 
 	return false
@@ -547,6 +578,204 @@ func (c *Commander) handleSearchResultsKey(ev *tcell.EventKey) bool {
 		c.searchResultScroll = c.searchResultIdx - visibleHeight + 1
 	}
 
+	return false
+}
+
+func (c *Commander) startHashSelection() {
+	pane := c.getActivePane()
+
+	if len(pane.Files) == 0 {
+		c.setStatus("No file selected")
+		return
+	}
+
+	selected := pane.Files[pane.SelectedIdx]
+	if selected.Name == ".." {
+		c.setStatus("Cannot hash parent directory link")
+		return
+	}
+
+	if selected.IsDir {
+		c.setStatus("Cannot hash a directory")
+		return
+	}
+
+	// Initialize hash algorithm list
+	c.hashAlgorithms = []string{
+		"MD5",
+		"SHA-1",
+		"SHA-256",
+		"SHA-512",
+		"SHA3-256",
+		"SHA3-512",
+		"BLAKE2b-256",
+		"BLAKE2s-256",
+		"BLAKE3",
+		"RIPEMD-160",
+	}
+	c.hashSelectedIdx = 0
+	c.hashFilePath = selected.Path
+	c.hashSelectionMode = true
+	c.setStatus("Select hash algorithm. Enter:Compute, Esc:Cancel")
+}
+
+func (c *Commander) handleHashSelectionKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyEscape:
+		c.hashSelectionMode = false
+		c.hashAlgorithms = nil
+		c.hashFilePath = ""
+		c.setStatus("Hash cancelled")
+		return false
+	case tcell.KeyEnter:
+		if len(c.hashAlgorithms) > 0 {
+			c.computeHash()
+		}
+		c.hashSelectionMode = false
+		return false
+	case tcell.KeyUp:
+		if c.hashSelectedIdx > 0 {
+			c.hashSelectedIdx--
+		}
+	case tcell.KeyDown:
+		if c.hashSelectedIdx < len(c.hashAlgorithms)-1 {
+			c.hashSelectedIdx++
+		}
+	case tcell.KeyHome:
+		c.hashSelectedIdx = 0
+	case tcell.KeyEnd:
+		c.hashSelectedIdx = len(c.hashAlgorithms) - 1
+	}
+	return false
+}
+
+func (c *Commander) computeHash() {
+	if c.hashFilePath == "" || len(c.hashAlgorithms) == 0 {
+		c.setStatus("Error: No file or algorithm selected")
+		return
+	}
+
+	algorithm := c.hashAlgorithms[c.hashSelectedIdx]
+	c.setStatus("Computing " + algorithm + " hash...")
+	if c.screen != nil {
+		c.draw()
+	}
+
+	// Open file
+	file, err := os.Open(c.hashFilePath)
+	if err != nil {
+		c.setStatus("Error opening file: " + err.Error())
+		c.hashAlgorithms = nil
+		c.hashFilePath = ""
+		return
+	}
+	defer file.Close()
+
+	// Get file info for progress indication
+	fileInfo, err := file.Stat()
+	if err != nil {
+		c.setStatus("Error getting file info: " + err.Error())
+		c.hashAlgorithms = nil
+		c.hashFilePath = ""
+		return
+	}
+
+	// Show file size in status for large files
+	if fileInfo.Size() > 10*1024*1024 { // > 10MB
+		c.setStatus(fmt.Sprintf("Computing %s hash for %s file...", algorithm, formatSize(fileInfo.Size())))
+		if c.screen != nil {
+			c.draw()
+		}
+	}
+
+	var hashBytes []byte
+	var hashErr error
+
+	// Compute hash based on selected algorithm
+	switch algorithm {
+	case "MD5":
+		hasher := md5.New()
+		_, hashErr = io.Copy(hasher, file)
+		hashBytes = hasher.Sum(nil)
+	case "SHA-1":
+		hasher := sha1.New()
+		_, hashErr = io.Copy(hasher, file)
+		hashBytes = hasher.Sum(nil)
+	case "SHA-256":
+		hasher := sha256.New()
+		_, hashErr = io.Copy(hasher, file)
+		hashBytes = hasher.Sum(nil)
+	case "SHA-512":
+		hasher := sha512.New()
+		_, hashErr = io.Copy(hasher, file)
+		hashBytes = hasher.Sum(nil)
+	case "SHA3-256":
+		hasher := sha3.New256()
+		_, hashErr = io.Copy(hasher, file)
+		hashBytes = hasher.Sum(nil)
+	case "SHA3-512":
+		hasher := sha3.New512()
+		_, hashErr = io.Copy(hasher, file)
+		hashBytes = hasher.Sum(nil)
+	case "BLAKE2b-256":
+		hasher, err := blake2b.New256(nil)
+		if err != nil {
+			c.setStatus("Error initializing BLAKE2b: " + err.Error())
+			c.hashAlgorithms = nil
+			c.hashFilePath = ""
+			return
+		}
+		_, hashErr = io.Copy(hasher, file)
+		hashBytes = hasher.Sum(nil)
+	case "BLAKE2s-256":
+		hasher, err := blake2s.New256(nil)
+		if err != nil {
+			c.setStatus("Error initializing BLAKE2s: " + err.Error())
+			c.hashAlgorithms = nil
+			c.hashFilePath = ""
+			return
+		}
+		_, hashErr = io.Copy(hasher, file)
+		hashBytes = hasher.Sum(nil)
+	case "BLAKE3":
+		hasher := blake3.New()
+		_, hashErr = io.Copy(hasher, file)
+		hashBytes = hasher.Sum(nil)
+	case "RIPEMD-160":
+		hasher := ripemd160.New()
+		_, hashErr = io.Copy(hasher, file)
+		hashBytes = hasher.Sum(nil)
+	default:
+		c.setStatus("Error: Unknown algorithm")
+		c.hashAlgorithms = nil
+		c.hashFilePath = ""
+		return
+	}
+
+	if hashErr != nil {
+		c.setStatus("Error computing hash: " + hashErr.Error())
+		c.hashAlgorithms = nil
+		c.hashFilePath = ""
+		return
+	}
+
+	// Convert to hex string (lowercase)
+	c.hashResult = hex.EncodeToString(hashBytes)
+	c.hashAlgorithm = algorithm
+	c.hashResultFilePath = c.hashFilePath
+	c.hashResultMode = true
+	c.hashAlgorithms = nil
+	c.hashFilePath = ""
+	c.setStatus("Press any key to close | Hash: " + c.hashResult)
+}
+
+func (c *Commander) handleHashResultKey(ev *tcell.EventKey) bool {
+	// Any key closes the hash result display
+	c.hashResultMode = false
+	c.hashResult = ""
+	c.hashAlgorithm = ""
+	c.hashResultFilePath = ""
+	c.setStatus("")
 	return false
 }
 
@@ -978,6 +1207,105 @@ func (c *Commander) drawSearchResults() {
 	c.screen.Show()
 }
 
+func (c *Commander) drawHashSelection() {
+	c.screen.Clear()
+	width, height := c.screen.Size()
+
+	// Header style
+	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
+	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkCyan).Foreground(tcell.ColorWhite)
+	normalStyle := tcell.StyleDefault
+
+	// Draw header
+	fileName := filepath.Base(c.hashFilePath)
+	title := fmt.Sprintf(" Select Hash Algorithm for: %s", fileName)
+	if len(title) > width-2 {
+		title = title[:width-2]
+	}
+	c.drawText(0, 0, width, headerStyle, title)
+
+	// Draw algorithms list
+	startY := 2
+	for i, algo := range c.hashAlgorithms {
+		y := startY + i
+		if y >= height-2 { // Leave room for status bar
+			break
+		}
+
+		style := normalStyle
+		if i == c.hashSelectedIdx {
+			style = selectedStyle
+		}
+
+		line := fmt.Sprintf("  %s", algo)
+		c.drawText(0, y, width, style, line)
+	}
+
+	// Draw status bar
+	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	c.drawText(0, height-1, width, statusStyle, c.statusMsg)
+
+	c.screen.Show()
+}
+
+func (c *Commander) drawHashResult() {
+	c.screen.Clear()
+	width, height := c.screen.Size()
+
+	// Header style
+	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
+	normalStyle := tcell.StyleDefault
+	highlightStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true)
+
+	// Draw header
+	title := fmt.Sprintf(" Hash Result - %s", c.hashAlgorithm)
+	if len(title) > width-2 {
+		title = title[:width-2]
+	}
+	c.drawText(0, 0, width, headerStyle, title)
+
+	// Draw file path
+	fileName := filepath.Base(c.hashResultFilePath)
+	fileLabel := fmt.Sprintf("  File: %s", fileName)
+	if len(fileLabel) > width {
+		fileLabel = fileLabel[:width]
+	}
+	c.drawText(0, 2, width, normalStyle, fileLabel)
+
+	// Draw hash result (wrapped if needed)
+	hashLabel := "  Hash:"
+	c.drawText(0, 4, width, normalStyle, hashLabel)
+	
+	// Draw hash value with wrapping for long hashes
+	hashValue := c.hashResult
+	currentY := 5
+	currentX := 2
+	maxLineWidth := width - 4
+
+	for len(hashValue) > 0 {
+		if currentY >= height-2 { // Leave room for status
+			break
+		}
+
+		chunkSize := maxLineWidth
+		if chunkSize > len(hashValue) {
+			chunkSize = len(hashValue)
+		}
+
+		chunk := hashValue[:chunkSize]
+		hashValue = hashValue[chunkSize:]
+
+		c.drawText(currentX, currentY, len(chunk), highlightStyle, chunk)
+		currentY++
+	}
+
+	// Draw status bar
+	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	c.drawText(0, height-1, width, statusStyle, c.statusMsg)
+
+	c.screen.Show()
+}
+
 func (c *Commander) drawEditor() {
 	c.screen.Clear()
 	width, height := c.screen.Size()
@@ -1174,6 +1502,18 @@ func (c *Commander) draw() {
 		return
 	}
 
+	// Check if in hash selection mode
+	if c.hashSelectionMode {
+		c.drawHashSelection()
+		return
+	}
+
+	// Check if in hash result mode
+	if c.hashResultMode {
+		c.drawHashResult()
+		return
+	}
+
 	c.screen.Clear()
 	_, height := c.screen.Size()
 
@@ -1309,7 +1649,7 @@ func (c *Commander) drawStatusBar(y int) {
 		c.setStatus("")
 	}
 
-	shortcuts := "^C:Copy ^X:Move DEL:Del ^F:Find ^E:Edit ^G:Goto ^N:New ^R:Rename Tab:Switch ESC:Quit"
+	shortcuts := "^C:Copy ^X:Move DEL:Del ^F:Find ^E:Edit ^G:Goto ^H:Hash ^N:New ^R:Rename Tab:Switch ESC:Quit"
 
 	// Calculate available space for status message
 	statusMsg := c.statusMsg
