@@ -69,6 +69,14 @@ See [QUICKSTART.md](QUICKSTART.md) for a complete tutorial.
   - Line numbers displayed for both files
   - Synchronized scrolling
   - Unsaved changes warning on exit
+- **Folder Comparison and Synchronization** (Ctrl+Y):
+  - Compare files between left and right panes (non-recursive)
+  - Visual indicators: [L] left-only, [R] right-only, [D] different, [=] identical
+  - Color-coded display: cyan for one-sided, yellow for different, green for identical
+  - Files compared by size and modification time
+  - Sync operations: left→right (>), right→left (<), both ways (=)
+  - Automatic re-comparison after sync
+  - Statistics display showing total files, left-only, right-only, different, and identical counts
 - **Visual Indicators**: 
   - Directories shown in brackets [dirname]
   - Selected items marked with `[*]` prefix
@@ -163,7 +171,24 @@ terminalcommander.exe
 | Ctrl+H | Generate file hash (select algorithm) |
 | Ctrl+N | Create new directory |
 | F3 | Compare files (diff mode) |
+| Ctrl+Y | Toggle folder comparison mode |
 | Ctrl+Q / ESC | Quit application |
+
+#### Folder Comparison Mode
+
+| Key | Action |
+|-----|--------|
+| Ctrl+Y | Toggle comparison mode |
+| > | Sync selected file(s) from left to right |
+| < | Sync selected file(s) from right to left |
+| = | Sync both ways (copy unique files from each side) |
+| ESC | Exit comparison mode |
+
+**Comparison Indicators:**
+- `[L]` - File exists only in left pane (cyan)
+- `[R]` - File exists only in right pane (cyan)
+- `[D]` - File exists in both but differs (yellow)
+- `[=]` - File exists in both and is identical (green)
 
 #### Diff Mode
 

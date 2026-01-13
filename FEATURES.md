@@ -357,5 +357,86 @@ Left: /home/user/backup/main.go     Right: /home/user/project/main.go
 8. Use '>' to update backup with good changes
 9. Save with Ctrl+S
 ```
+
+### Example 8: Folder Synchronization with Comparison Mode
+```
+Scenario: Synchronize two project directories
+Left: /home/user/project/dev     Right: /home/user/project/backup
+
+1. Navigate to dev directory (left pane)
+2. Navigate to backup directory (right pane, Tab to switch)
+3. Press Ctrl+Y to enter comparison mode
+
+Comparison View:
+┌──────────────────────────────────────────┬──────────────────────────────────────────┐
+│ /home/user/project/dev                   │ /home/user/project/backup                 │
+├──────────────────────────────────────────┼──────────────────────────────────────────┤
+│ [L] new_feature.go         (cyan)        │                                           │
+│ [D] config.yaml            (yellow)      │ [D] config.yaml            (yellow)      │
+│ [=] main.go                (green)       │ [=] main.go                (green)       │
+│                                          │ [R] old_backup.log         (cyan)        │
+└──────────────────────────────────────────┴──────────────────────────────────────────┘
+Compare: 4 files | Left only: 1 | Right only: 1 | Different: 1 | Identical: 1
+
+Understanding the indicators:
+• [L] new_feature.go - Exists only in left (dev) - cyan color
+• [R] old_backup.log - Exists only in right (backup) - cyan color  
+• [D] config.yaml - Exists in both but different size/time - yellow color
+• [=] main.go - Identical in both folders - green color
+
+Synchronization options:
+
+Option 1: Sync specific file left→right
+4. Select new_feature.go (marked [L])
+5. Press '>' to copy it to backup
+6. Status: "Synced 1 file(s) left→right"
+7. Comparison automatically updates
+
+Option 2: Sync specific file right→left  
+4. Press Tab to switch to right pane
+5. Select old_backup.log (marked [R])
+6. Press '<' to copy it to dev
+7. Status: "Synced 1 file(s) right→left"
+
+Option 3: Full bidirectional sync
+4. Press '=' to sync everything
+5. This will:
+   - Copy new_feature.go from dev to backup
+   - Copy old_backup.log from backup to dev
+   - For config.yaml: copy the newer version based on modification time
+6. Status: "Synced both ways: 1 left→right, 1 right→left, 1 newer copied"
+
+After sync:
+7. Press Ctrl+Y to exit comparison mode
+8. Both folders now synchronized
+
+Real-world use cases:
+• Synchronize development and backup directories
+• Compare local and network drive folders
+• Identify missing files between two locations
+• Keep two project versions in sync
+```
+
+### Example 9: Selective File Synchronization
+```
+Scenario: Sync only certain files between folders
+Left: /home/user/docs/current     Right: /home/user/docs/archive
+
+1. Navigate to current directory (left)
+2. Navigate to archive directory (right)
+3. Press Ctrl+Y to enter comparison mode
+4. Select multiple files to sync using Spacebar:
+   - Press Spacebar on file1.txt [L] to select it
+   - Press Spacebar on file2.txt [L] to select it
+   - Press Spacebar on file3.txt [D] to select it
+5. Press '>' to sync only selected files left→right
+6. Status: "Synced 3 file(s) left→right"
+7. Unselected files remain untouched
+8. Press Ctrl+Y to exit
+
+This allows fine-grained control over which files to synchronize.
+```
+
 6. **File Comparison**: Use F3 to quickly compare and merge changes between files
 7. **Version Control**: Keep backups in one pane and working files in another, use diff to review changes
+8. **Folder Synchronization**: Use Ctrl+Y to compare and sync entire folders efficiently

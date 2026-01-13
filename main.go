@@ -2310,7 +2310,7 @@ func (c *Commander) drawStatusBar(y int) {
 		c.setStatus("")
 	}
 
-	shortcuts := "SPC:Select ^A:Archive ^C:Copy ^X:Move DEL:Del ^F:Find ^E:Edit ^G:Goto ^H:Hash ^N:New ^R:Rename Tab:Switch ESC:Quit"
+	shortcuts := "SPC:Select ^A:Archive ^C:Copy ^X:Move DEL:Del ^F:Find ^E:Edit ^G:Goto ^H:Hash ^N:New ^R:Rename ^Y:Compare Tab:Switch ESC:Quit"
 
 	// Calculate available space for status message
 	statusMsg := c.statusMsg
