@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -18,10 +18,12 @@ const (
 )
 
 type FileItem struct {
-	Name  string
-	IsDir bool
-	Size  int64
-	Path  string
+	Name    string
+	Ext     string
+	IsDir   bool
+	Size    int64
+	ModTime time.Time
+	Path    string
 }
 
 type Pane struct {
@@ -33,17 +35,41 @@ type Pane struct {
 	Height       int
 }
 
+type SearchResult struct {
+	Name    string
+	Path    string
+	Dir     string
+	IsDir   bool
+	RelPath string
+}
+
 type Commander struct {
-	screen      tcell.Screen
-	leftPane    *Pane
-	rightPane   *Pane
-	activePane  int
-	statusMsg   string
-	searchMode  bool
-	searchQuery string
-	inputMode   string // "rename", "newdir", or ""
-	inputBuffer string
-	inputPrompt string
+	screen        tcell.Screen
+	leftPane      *Pane
+	rightPane     *Pane
+	activePane    int
+	statusMsg     string
+	statusMsgTime time.Time
+	searchMode    bool
+	searchQuery   string
+	inputMode     string // "rename", "newdir", or ""
+	inputBuffer   string
+	inputPrompt   string
+	// Editor state
+	editorMode     bool
+	editorLines    []string
+	editorCursorX  int
+	editorCursorY  int
+	editorScrollY  int
+	editorScrollX  int
+	editorFilePath string
+	editorModified bool
+	// Search results state
+	searchResultsMode  bool
+	searchResults      []SearchResult
+	searchResultIdx    int
+	searchResultScroll int
+	searchBaseDir      string
 }
 
 func NewCommander() (*Commander, error) {
@@ -79,6 +105,11 @@ func NewCommander() (*Commander, error) {
 	return cmd, nil
 }
 
+func (c *Commander) setStatus(msg string) {
+	c.statusMsg = msg
+	c.statusMsgTime = time.Now()
+}
+
 func (c *Commander) Run() error {
 	defer c.screen.Fini()
 
@@ -109,10 +140,18 @@ func (c *Commander) Run() error {
 }
 
 func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
+	if c.editorMode {
+		return c.handleEditorKey(ev)
+	}
+
+	if c.searchResultsMode {
+		return c.handleSearchResultsKey(ev)
+	}
+
 	if c.inputMode != "" {
 		return c.handleInputKey(ev)
 	}
-	
+
 	if c.searchMode {
 		return c.handleSearchKey(ev)
 	}
@@ -154,6 +193,8 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 		c.deleteFile()
 	case tcell.KeyCtrlN:
 		c.createDirectory()
+	case tcell.KeyCtrlG:
+		c.gotoFolder()
 	}
 
 	return false
@@ -164,7 +205,7 @@ func (c *Commander) handleSearchKey(ev *tcell.EventKey) bool {
 	case tcell.KeyEscape:
 		c.searchMode = false
 		c.searchQuery = ""
-		c.statusMsg = ""
+		c.setStatus("")
 		return false
 	case tcell.KeyEnter:
 		c.performSearch()
@@ -177,7 +218,7 @@ func (c *Commander) handleSearchKey(ev *tcell.EventKey) bool {
 	case tcell.KeyRune:
 		c.searchQuery += string(ev.Rune())
 	}
-	c.statusMsg = "Search: " + c.searchQuery
+	c.setStatus("Search: " + c.searchQuery)
 	return false
 }
 
@@ -187,7 +228,7 @@ func (c *Commander) handleInputKey(ev *tcell.EventKey) bool {
 		c.inputMode = ""
 		c.inputBuffer = ""
 		c.inputPrompt = ""
-		c.statusMsg = "Cancelled"
+		c.setStatus("Cancelled")
 		return false
 	case tcell.KeyEnter:
 		c.processInput()
@@ -199,69 +240,112 @@ func (c *Commander) handleInputKey(ev *tcell.EventKey) bool {
 	case tcell.KeyRune:
 		c.inputBuffer += string(ev.Rune())
 	}
-	c.statusMsg = c.inputPrompt + c.inputBuffer
+	c.setStatus(c.inputPrompt + c.inputBuffer)
 	return false
 }
 
 func (c *Commander) processInput() {
 	pane := c.getActivePane()
-	
+
 	switch c.inputMode {
 	case "rename":
 		if len(c.inputBuffer) == 0 {
-			c.statusMsg = "Name cannot be empty"
+			c.setStatus("Name cannot be empty")
 			c.inputMode = ""
 			c.inputBuffer = ""
 			return
 		}
-		
+
 		if len(pane.Files) == 0 {
-			c.statusMsg = "No file selected"
+			c.setStatus("No file selected")
 			c.inputMode = ""
 			c.inputBuffer = ""
 			return
 		}
-		
+
 		selected := pane.Files[pane.SelectedIdx]
 		if selected.Name == ".." {
-			c.statusMsg = "Cannot rename parent directory link"
+			c.setStatus("Cannot rename parent directory link")
 			c.inputMode = ""
 			c.inputBuffer = ""
 			return
 		}
-		
+
 		newPath := filepath.Join(filepath.Dir(selected.Path), c.inputBuffer)
 		err := os.Rename(selected.Path, newPath)
 		if err != nil {
-			c.statusMsg = "Error renaming: " + err.Error()
+			c.setStatus("Error renaming: " + err.Error())
 		} else {
-			c.statusMsg = "Renamed to: " + c.inputBuffer
+			c.setStatus("Renamed to: " + c.inputBuffer)
 			c.refreshPane(pane)
 		}
-		
+
 	case "newdir":
 		if len(c.inputBuffer) == 0 {
-			c.statusMsg = "Directory name cannot be empty"
+			c.setStatus("Directory name cannot be empty")
 			c.inputMode = ""
 			c.inputBuffer = ""
 			return
 		}
-		
+
 		newPath := filepath.Join(pane.CurrentPath, c.inputBuffer)
 		err := os.MkdirAll(newPath, 0755)
 		if err != nil {
-			c.statusMsg = "Error creating directory: " + err.Error()
+			c.setStatus("Error creating directory: " + err.Error())
 		} else {
-			c.statusMsg = "Created directory: " + c.inputBuffer
+			c.setStatus("Created directory: " + c.inputBuffer)
 			c.refreshPane(pane)
 		}
+
+	case "goto":
+		if len(c.inputBuffer) == 0 {
+			c.setStatus("Path cannot be empty")
+			c.inputMode = ""
+			c.inputBuffer = ""
+			return
+		}
+
+		// Expand home directory
+		path := c.inputBuffer
+		if strings.HasPrefix(path, "~/") {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				path = filepath.Join(home, path[2:])
+			}
+		} else if path == "~" {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				path = home
+			}
+		}
+
+		// Make absolute if relative
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(pane.CurrentPath, path)
+		}
+
+		// Clean the path
+		path = filepath.Clean(path)
+
+		// Check if directory exists
+		info, err := os.Stat(path)
+		if err != nil {
+			c.setStatus("Error: " + err.Error())
+		} else if !info.IsDir() {
+			c.setStatus("Error: Not a directory")
+		} else {
+			pane.CurrentPath = path
+			pane.SelectedIdx = 0
+			pane.ScrollOffset = 0
+			c.refreshPane(pane)
+			c.setStatus("Navigated to: " + path)
+		}
 	}
-	
+
 	c.inputMode = ""
 	c.inputBuffer = ""
 	c.inputPrompt = ""
 }
-
 
 func (c *Commander) getActivePane() *Pane {
 	if c.activePane == PaneLeft {
@@ -295,8 +379,8 @@ func (c *Commander) moveSelection(delta int) {
 	if pane.SelectedIdx < pane.ScrollOffset {
 		pane.ScrollOffset = pane.SelectedIdx
 	}
-	if pane.SelectedIdx >= pane.ScrollOffset+pane.Height-3 {
-		pane.ScrollOffset = pane.SelectedIdx - pane.Height + 4
+	if pane.SelectedIdx >= pane.ScrollOffset+pane.Height-4 {
+		pane.ScrollOffset = pane.SelectedIdx - pane.Height + 5
 	}
 }
 
@@ -312,9 +396,9 @@ func (c *Commander) enterDirectory() {
 		pane.SelectedIdx = 0
 		pane.ScrollOffset = 0
 		c.refreshPane(pane)
-		c.statusMsg = "Entered: " + selected.Name
+		c.setStatus("Entered: " + selected.Name)
 	} else {
-		c.statusMsg = "Use Ctrl+E to edit file"
+		c.setStatus("Use Ctrl+E to edit file")
 	}
 }
 
@@ -326,58 +410,168 @@ func (c *Commander) goToParent() {
 		pane.SelectedIdx = 0
 		pane.ScrollOffset = 0
 		c.refreshPane(pane)
-		c.statusMsg = "Parent directory"
+		c.setStatus("Parent directory")
 	}
 }
 
 func (c *Commander) startSearch() {
 	c.searchMode = true
 	c.searchQuery = ""
-	c.statusMsg = "Search: "
+	c.setStatus("Search: ")
 }
 
 func (c *Commander) performSearch() {
 	pane := c.getActivePane()
 	query := strings.ToLower(c.searchQuery)
-	
-	for i, file := range pane.Files {
-		if strings.Contains(strings.ToLower(file.Name), query) {
-			pane.SelectedIdx = i
-			pane.ScrollOffset = 0
-			if pane.SelectedIdx >= pane.Height-3 {
-				pane.ScrollOffset = pane.SelectedIdx - pane.Height + 4
-			}
-			c.statusMsg = "Found: " + file.Name
-			c.searchQuery = ""
-			return
-		}
+
+	if query == "" {
+		c.setStatus("Search cancelled")
+		c.searchQuery = ""
+		return
 	}
-	c.statusMsg = "Not found: " + c.searchQuery
+
+	c.setStatus("Searching...")
+	c.draw()
+
+	// Perform recursive search
+	var results []SearchResult
+	baseDir := pane.CurrentPath
+
+	filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // Skip directories we can't access
+		}
+
+		name := d.Name()
+		if strings.Contains(strings.ToLower(name), query) {
+			relPath, _ := filepath.Rel(baseDir, path)
+			results = append(results, SearchResult{
+				Name:    name,
+				Path:    path,
+				Dir:     filepath.Dir(path),
+				IsDir:   d.IsDir(),
+				RelPath: relPath,
+			})
+		}
+
+		// Limit results to prevent UI slowdown
+		if len(results) >= 500 {
+			return filepath.SkipAll
+		}
+		return nil
+	})
+
+	if len(results) == 0 {
+		c.setStatus("No matches found for: " + c.searchQuery)
+		c.searchQuery = ""
+		return
+	}
+
+	// Show search results
+	c.searchResults = results
+	c.searchResultIdx = 0
+	c.searchResultScroll = 0
+	c.searchBaseDir = baseDir
+	c.searchResultsMode = true
+	c.setStatus(fmt.Sprintf("Found %d matches. Enter:Go to folder, Esc:Cancel", len(results)))
 	c.searchQuery = ""
+}
+
+func (c *Commander) handleSearchResultsKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyEscape:
+		c.searchResultsMode = false
+		c.searchResults = nil
+		c.setStatus("Search cancelled")
+		return false
+	case tcell.KeyEnter:
+		if len(c.searchResults) > 0 {
+			result := c.searchResults[c.searchResultIdx]
+			pane := c.getActivePane()
+			pane.CurrentPath = result.Dir
+			pane.SelectedIdx = 0
+			pane.ScrollOffset = 0
+			c.refreshPane(pane)
+
+			// Try to select the found file
+			for i, f := range pane.Files {
+				if f.Name == result.Name {
+					pane.SelectedIdx = i
+					if pane.SelectedIdx >= pane.Height-4 {
+						pane.ScrollOffset = pane.SelectedIdx - pane.Height + 5
+					}
+					break
+				}
+			}
+
+			c.setStatus("Navigated to: " + result.Dir)
+		}
+		c.searchResultsMode = false
+		c.searchResults = nil
+		return false
+	case tcell.KeyUp:
+		if c.searchResultIdx > 0 {
+			c.searchResultIdx--
+		}
+	case tcell.KeyDown:
+		if c.searchResultIdx < len(c.searchResults)-1 {
+			c.searchResultIdx++
+		}
+	case tcell.KeyPgUp:
+		_, height := c.screen.Size()
+		pageSize := height - 4
+		c.searchResultIdx -= pageSize
+		if c.searchResultIdx < 0 {
+			c.searchResultIdx = 0
+		}
+	case tcell.KeyPgDn:
+		_, height := c.screen.Size()
+		pageSize := height - 4
+		c.searchResultIdx += pageSize
+		if c.searchResultIdx >= len(c.searchResults) {
+			c.searchResultIdx = len(c.searchResults) - 1
+		}
+	case tcell.KeyHome:
+		c.searchResultIdx = 0
+	case tcell.KeyEnd:
+		c.searchResultIdx = len(c.searchResults) - 1
+	}
+
+	// Adjust scroll
+	_, height := c.screen.Size()
+	visibleHeight := height - 4
+	if c.searchResultIdx < c.searchResultScroll {
+		c.searchResultScroll = c.searchResultIdx
+	}
+	if c.searchResultIdx >= c.searchResultScroll+visibleHeight {
+		c.searchResultScroll = c.searchResultIdx - visibleHeight + 1
+	}
+
+	return false
 }
 
 func (c *Commander) copyFile() {
 	pane := c.getActivePane()
 	destPane := c.getInactivePane()
-	
+
 	if len(pane.Files) == 0 {
-		c.statusMsg = "No file selected"
+		c.setStatus("No file selected")
 		return
 	}
 
 	selected := pane.Files[pane.SelectedIdx]
 	if selected.Name == ".." {
-		c.statusMsg = "Cannot copy parent directory link"
+		c.setStatus("Cannot copy parent directory link")
 		return
 	}
 
 	destPath := filepath.Join(destPane.CurrentPath, selected.Name)
-	
+
 	err := copyFileOrDir(selected.Path, destPath)
 	if err != nil {
-		c.statusMsg = "Error copying: " + err.Error()
+		c.setStatus("Error copying: " + err.Error())
 	} else {
-		c.statusMsg = "Copied: " + selected.Name
+		c.setStatus("Copied: " + selected.Name)
 		c.refreshPane(destPane)
 	}
 }
@@ -385,25 +579,25 @@ func (c *Commander) copyFile() {
 func (c *Commander) moveFile() {
 	pane := c.getActivePane()
 	destPane := c.getInactivePane()
-	
+
 	if len(pane.Files) == 0 {
-		c.statusMsg = "No file selected"
+		c.setStatus("No file selected")
 		return
 	}
 
 	selected := pane.Files[pane.SelectedIdx]
 	if selected.Name == ".." {
-		c.statusMsg = "Cannot move parent directory link"
+		c.setStatus("Cannot move parent directory link")
 		return
 	}
 
 	destPath := filepath.Join(destPane.CurrentPath, selected.Name)
-	
+
 	err := os.Rename(selected.Path, destPath)
 	if err != nil {
-		c.statusMsg = "Error moving: " + err.Error()
+		c.setStatus("Error moving: " + err.Error())
 	} else {
-		c.statusMsg = "Moved: " + selected.Name
+		c.setStatus("Moved: " + selected.Name)
 		c.refreshPane(pane)
 		c.refreshPane(destPane)
 	}
@@ -411,15 +605,15 @@ func (c *Commander) moveFile() {
 
 func (c *Commander) deleteFile() {
 	pane := c.getActivePane()
-	
+
 	if len(pane.Files) == 0 {
-		c.statusMsg = "No file selected"
+		c.setStatus("No file selected")
 		return
 	}
 
 	selected := pane.Files[pane.SelectedIdx]
 	if selected.Name == ".." {
-		c.statusMsg = "Cannot delete parent directory link"
+		c.setStatus("Cannot delete parent directory link")
 		return
 	}
 
@@ -431,9 +625,9 @@ func (c *Commander) deleteFile() {
 	}
 
 	if err != nil {
-		c.statusMsg = "Error deleting: " + err.Error()
+		c.setStatus("Error deleting: " + err.Error())
 	} else {
-		c.statusMsg = "Deleted: " + selected.Name
+		c.setStatus("Deleted: " + selected.Name)
 		if pane.SelectedIdx > 0 {
 			pane.SelectedIdx--
 		}
@@ -443,76 +637,456 @@ func (c *Commander) deleteFile() {
 
 func (c *Commander) renameFile() {
 	pane := c.getActivePane()
-	
+
 	if len(pane.Files) == 0 {
-		c.statusMsg = "No file selected"
+		c.setStatus("No file selected")
 		return
 	}
 
 	selected := pane.Files[pane.SelectedIdx]
 	if selected.Name == ".." {
-		c.statusMsg = "Cannot rename parent directory link"
+		c.setStatus("Cannot rename parent directory link")
 		return
 	}
 
 	c.inputMode = "rename"
 	c.inputBuffer = selected.Name
 	c.inputPrompt = "Rename to: "
-	c.statusMsg = c.inputPrompt + c.inputBuffer
+	c.setStatus(c.inputPrompt + c.inputBuffer)
 }
 
 func (c *Commander) editFile() {
 	pane := c.getActivePane()
-	
+
 	if len(pane.Files) == 0 {
-		c.statusMsg = "No file selected"
+		c.setStatus("No file selected")
 		return
 	}
 
 	selected := pane.Files[pane.SelectedIdx]
 	if selected.IsDir {
-		c.statusMsg = "Cannot edit a directory"
+		c.setStatus("Cannot edit a directory")
 		return
 	}
 
-	// Suspend screen to launch external editor
-	c.screen.Fini()
-	
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		if _, err := os.Stat("/usr/bin/nano"); err == nil {
-			editor = "nano"
-		} else if _, err := os.Stat("/usr/bin/vi"); err == nil {
-			editor = "vi"
+	// Load file content
+	content, err := os.ReadFile(selected.Path)
+	if err != nil {
+		c.setStatus("Error reading file: " + err.Error())
+		return
+	}
+
+	// Split into lines
+	lines := strings.Split(string(content), "\n")
+	// Remove trailing empty line if file ends with newline
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+
+	c.editorMode = true
+	c.editorLines = lines
+	c.editorCursorX = 0
+	c.editorCursorY = 0
+	c.editorScrollY = 0
+	c.editorScrollX = 0
+	c.editorFilePath = selected.Path
+	c.editorModified = false
+	c.setStatus("Editing: " + selected.Name + " | Ctrl+S:Save Ctrl+Q:Quit")
+}
+
+func (c *Commander) handleEditorKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyCtrlQ, tcell.KeyEscape:
+		if c.editorModified {
+			c.setStatus("Unsaved changes! Press Ctrl+S to save or Ctrl+Q again to discard")
+			c.editorModified = false // Allow second press to exit
+			return false
+		}
+		c.exitEditor()
+		return false
+	case tcell.KeyCtrlS:
+		c.saveEditorFile()
+		return false
+	case tcell.KeyUp:
+		if c.editorCursorY > 0 {
+			c.editorCursorY--
+			if c.editorCursorX > len(c.editorLines[c.editorCursorY]) {
+				c.editorCursorX = len(c.editorLines[c.editorCursorY])
+			}
+		}
+	case tcell.KeyDown:
+		if c.editorCursorY < len(c.editorLines)-1 {
+			c.editorCursorY++
+			if c.editorCursorX > len(c.editorLines[c.editorCursorY]) {
+				c.editorCursorX = len(c.editorLines[c.editorCursorY])
+			}
+		}
+	case tcell.KeyLeft:
+		if c.editorCursorX > 0 {
+			c.editorCursorX--
+		} else if c.editorCursorY > 0 {
+			c.editorCursorY--
+			c.editorCursorX = len(c.editorLines[c.editorCursorY])
+		}
+	case tcell.KeyRight:
+		if c.editorCursorX < len(c.editorLines[c.editorCursorY]) {
+			c.editorCursorX++
+		} else if c.editorCursorY < len(c.editorLines)-1 {
+			c.editorCursorY++
+			c.editorCursorX = 0
+		}
+	case tcell.KeyHome:
+		c.editorCursorX = 0
+	case tcell.KeyEnd:
+		c.editorCursorX = len(c.editorLines[c.editorCursorY])
+	case tcell.KeyPgUp:
+		_, height := c.screen.Size()
+		pageSize := height - 3
+		c.editorCursorY -= pageSize
+		if c.editorCursorY < 0 {
+			c.editorCursorY = 0
+		}
+		if c.editorCursorX > len(c.editorLines[c.editorCursorY]) {
+			c.editorCursorX = len(c.editorLines[c.editorCursorY])
+		}
+	case tcell.KeyPgDn:
+		_, height := c.screen.Size()
+		pageSize := height - 3
+		c.editorCursorY += pageSize
+		if c.editorCursorY >= len(c.editorLines) {
+			c.editorCursorY = len(c.editorLines) - 1
+		}
+		if c.editorCursorX > len(c.editorLines[c.editorCursorY]) {
+			c.editorCursorX = len(c.editorLines[c.editorCursorY])
+		}
+	case tcell.KeyEnter:
+		// Split line at cursor
+		line := c.editorLines[c.editorCursorY]
+		leftPart := line[:c.editorCursorX]
+		rightPart := line[c.editorCursorX:]
+		c.editorLines[c.editorCursorY] = leftPart
+		// Insert new line after current
+		newLines := make([]string, len(c.editorLines)+1)
+		copy(newLines, c.editorLines[:c.editorCursorY+1])
+		newLines[c.editorCursorY+1] = rightPart
+		copy(newLines[c.editorCursorY+2:], c.editorLines[c.editorCursorY+1:])
+		c.editorLines = newLines
+		c.editorCursorY++
+		c.editorCursorX = 0
+		c.editorModified = true
+	case tcell.KeyBackspace, tcell.KeyBackspace2:
+		if c.editorCursorX > 0 {
+			// Delete character before cursor
+			line := c.editorLines[c.editorCursorY]
+			c.editorLines[c.editorCursorY] = line[:c.editorCursorX-1] + line[c.editorCursorX:]
+			c.editorCursorX--
+			c.editorModified = true
+		} else if c.editorCursorY > 0 {
+			// Join with previous line
+			prevLineLen := len(c.editorLines[c.editorCursorY-1])
+			c.editorLines[c.editorCursorY-1] += c.editorLines[c.editorCursorY]
+			// Remove current line
+			c.editorLines = append(c.editorLines[:c.editorCursorY], c.editorLines[c.editorCursorY+1:]...)
+			c.editorCursorY--
+			c.editorCursorX = prevLineLen
+			c.editorModified = true
+		}
+	case tcell.KeyDelete:
+		line := c.editorLines[c.editorCursorY]
+		if c.editorCursorX < len(line) {
+			// Delete character at cursor
+			c.editorLines[c.editorCursorY] = line[:c.editorCursorX] + line[c.editorCursorX+1:]
+			c.editorModified = true
+		} else if c.editorCursorY < len(c.editorLines)-1 {
+			// Join with next line
+			c.editorLines[c.editorCursorY] += c.editorLines[c.editorCursorY+1]
+			c.editorLines = append(c.editorLines[:c.editorCursorY+1], c.editorLines[c.editorCursorY+2:]...)
+			c.editorModified = true
+		}
+	case tcell.KeyTab:
+		// Insert tab as spaces
+		line := c.editorLines[c.editorCursorY]
+		c.editorLines[c.editorCursorY] = line[:c.editorCursorX] + "    " + line[c.editorCursorX:]
+		c.editorCursorX += 4
+		c.editorModified = true
+	case tcell.KeyRune:
+		// Insert character
+		line := c.editorLines[c.editorCursorY]
+		c.editorLines[c.editorCursorY] = line[:c.editorCursorX] + string(ev.Rune()) + line[c.editorCursorX:]
+		c.editorCursorX++
+		c.editorModified = true
+	}
+
+	// Adjust scroll to keep cursor visible
+	c.adjustEditorScroll()
+	return false
+}
+
+func (c *Commander) adjustEditorScroll() {
+	width, height := c.screen.Size()
+	editorHeight := height - 2 // Leave room for header and status
+	lineNumWidth := c.getLineNumWidth() + 1
+	editorWidth := width - lineNumWidth
+
+	// Vertical scrolling
+	if c.editorCursorY < c.editorScrollY {
+		c.editorScrollY = c.editorCursorY
+	}
+	if c.editorCursorY >= c.editorScrollY+editorHeight {
+		c.editorScrollY = c.editorCursorY - editorHeight + 1
+	}
+
+	// Horizontal scrolling
+	if c.editorCursorX < c.editorScrollX {
+		c.editorScrollX = c.editorCursorX
+	}
+	if c.editorCursorX >= c.editorScrollX+editorWidth-1 {
+		c.editorScrollX = c.editorCursorX - editorWidth + 2
+	}
+}
+
+func (c *Commander) getLineNumWidth() int {
+	// Calculate width needed for line numbers
+	lineCount := len(c.editorLines)
+	width := 1
+	for lineCount >= 10 {
+		lineCount /= 10
+		width++
+	}
+	if width < 3 {
+		width = 3
+	}
+	return width
+}
+
+func (c *Commander) saveEditorFile() {
+	content := strings.Join(c.editorLines, "\n") + "\n"
+	err := os.WriteFile(c.editorFilePath, []byte(content), 0644)
+	if err != nil {
+		c.setStatus("Error saving: " + err.Error())
+	} else {
+		c.editorModified = false
+		c.setStatus("Saved: " + filepath.Base(c.editorFilePath))
+	}
+}
+
+func (c *Commander) exitEditor() {
+	c.editorMode = false
+	c.editorLines = nil
+	c.editorFilePath = ""
+	c.setStatus("Editor closed")
+	// Refresh pane in case file was modified
+	c.refreshPane(c.getActivePane())
+}
+
+func (c *Commander) drawSearchResults() {
+	c.screen.Clear()
+	width, height := c.screen.Size()
+
+	// Header style
+	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
+	colHeaderStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorWhite)
+	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkCyan).Foreground(tcell.ColorWhite)
+	normalStyle := tcell.StyleDefault
+
+	// Draw header
+	title := fmt.Sprintf(" Search Results: %d matches in %s", len(c.searchResults), c.searchBaseDir)
+	if len(title) > width-2 {
+		title = title[:width-2]
+	}
+	c.drawText(0, 0, width, headerStyle, title)
+
+	// Column widths
+	typeColWidth := 6
+	nameColWidth := 30
+	if width < 80 {
+		nameColWidth = 20
+	}
+	pathColWidth := width - typeColWidth - nameColWidth - 4
+
+	// Draw column headers
+	colHeader := fmt.Sprintf(" %-*s %-*s %-*s",
+		typeColWidth, "Type",
+		nameColWidth, "Name",
+		pathColWidth, "Location")
+	c.drawText(0, 1, width, colHeaderStyle, colHeader)
+
+	// Draw results
+	visibleHeight := height - 4
+	visibleStart := c.searchResultScroll
+	visibleEnd := c.searchResultScroll + visibleHeight
+	if visibleEnd > len(c.searchResults) {
+		visibleEnd = len(c.searchResults)
+	}
+
+	for i := visibleStart; i < visibleEnd; i++ {
+		result := c.searchResults[i]
+		y := i - c.searchResultScroll + 2
+
+		style := normalStyle
+		if i == c.searchResultIdx {
+			style = selectedStyle
+		}
+
+		// Type column
+		typeStr := "FILE"
+		if result.IsDir {
+			typeStr = "DIR"
+		}
+
+		// Name column (truncate if needed)
+		name := result.Name
+		if len(name) > nameColWidth {
+			name = name[:nameColWidth-3] + "..."
+		}
+
+		// Path column (show relative path to parent dir)
+		relDir := filepath.Dir(result.RelPath)
+		if relDir == "." {
+			relDir = "./"
 		} else {
-			editor = "notepad" // Windows fallback
+			relDir = "./" + relDir + "/"
+		}
+		if len(relDir) > pathColWidth {
+			relDir = "..." + relDir[len(relDir)-pathColWidth+3:]
+		}
+
+		line := fmt.Sprintf(" %-*s %-*s %-*s",
+			typeColWidth, typeStr,
+			nameColWidth, name,
+			pathColWidth, relDir)
+		c.drawText(0, y, width, style, line)
+	}
+
+	// Draw status bar
+	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	statusLeft := c.statusMsg
+	statusRight := fmt.Sprintf("%d/%d", c.searchResultIdx+1, len(c.searchResults))
+	padding := width - len(statusLeft) - len(statusRight)
+	if padding < 1 {
+		padding = 1
+	}
+	statusText := statusLeft + strings.Repeat(" ", padding) + statusRight
+	if len(statusText) > width {
+		statusText = statusText[:width]
+	}
+	c.drawText(0, height-1, width, statusStyle, statusText)
+
+	c.screen.Show()
+}
+
+func (c *Commander) drawEditor() {
+	c.screen.Clear()
+	width, height := c.screen.Size()
+
+	// Header style
+	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
+	lineNumStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(tcell.ColorDarkGray)
+	textStyle := tcell.StyleDefault
+	cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
+
+	// Draw header
+	title := c.editorFilePath
+	if c.editorModified {
+		title += " [modified]"
+	}
+	if len(title) > width-2 {
+		title = "..." + title[len(title)-width+5:]
+	}
+	c.drawText(0, 0, width, headerStyle, " "+title)
+
+	// Calculate line number width
+	lineNumWidth := c.getLineNumWidth()
+	editorHeight := height - 2
+
+	// Draw text area with line numbers
+	for y := 0; y < editorHeight; y++ {
+		lineIdx := c.editorScrollY + y
+		screenY := y + 1
+
+		if lineIdx < len(c.editorLines) {
+			// Draw line number
+			lineNumStr := fmt.Sprintf("%*d ", lineNumWidth, lineIdx+1)
+			for i, ch := range lineNumStr {
+				c.screen.SetContent(i, screenY, ch, nil, lineNumStyle)
+			}
+
+			// Draw line content
+			line := c.editorLines[lineIdx]
+			textStartX := lineNumWidth + 1
+			for x := 0; x < width-textStartX; x++ {
+				charIdx := c.editorScrollX + x
+				var ch rune = ' '
+				if charIdx < len(line) {
+					ch = rune(line[charIdx])
+				}
+
+				// Highlight cursor position
+				style := textStyle
+				if lineIdx == c.editorCursorY && charIdx == c.editorCursorX {
+					style = cursorStyle
+				}
+				c.screen.SetContent(textStartX+x, screenY, ch, nil, style)
+			}
+		} else {
+			// Draw empty line with tilde
+			lineNumStr := fmt.Sprintf("%*s ", lineNumWidth, "~")
+			for i, ch := range lineNumStr {
+				c.screen.SetContent(i, screenY, ch, nil, lineNumStyle)
+			}
+			for x := lineNumWidth + 1; x < width; x++ {
+				c.screen.SetContent(x, screenY, ' ', nil, textStyle)
+			}
 		}
 	}
 
-	// Execute the editor
-	cmd := exec.Command(editor, selected.Path)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	
-	err := cmd.Run()
-	
-	// Re-initialize screen
-	c.screen.Init()
-	c.screen.Clear()
-	
-	if err != nil {
-		c.statusMsg = "Error launching editor: " + err.Error()
-	} else {
-		c.statusMsg = "Edited: " + selected.Name
+	// Draw status bar
+	c.drawEditorStatusBar(height - 1)
+	c.screen.Show()
+}
+
+func (c *Commander) drawEditorStatusBar(y int) {
+	width, _ := c.screen.Size()
+	style := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+
+	// Left side: status message
+	statusLeft := c.statusMsg
+	if statusLeft == "" {
+		statusLeft = "Ctrl+S:Save Ctrl+Q:Quit"
 	}
+
+	// Right side: cursor position
+	statusRight := fmt.Sprintf("Ln %d, Col %d", c.editorCursorY+1, c.editorCursorX+1)
+
+	// Combine
+	padding := width - len(statusLeft) - len(statusRight)
+	if padding < 1 {
+		padding = 1
+	}
+	statusText := statusLeft + strings.Repeat(" ", padding) + statusRight
+	if len(statusText) > width {
+		statusText = statusText[:width]
+	}
+
+	c.drawText(0, y, width, style, statusText)
 }
 
 func (c *Commander) createDirectory() {
 	c.inputMode = "newdir"
 	c.inputBuffer = ""
 	c.inputPrompt = "New directory name: "
-	c.statusMsg = c.inputPrompt + c.inputBuffer
+	c.setStatus(c.inputPrompt + c.inputBuffer)
+}
+
+func (c *Commander) gotoFolder() {
+	pane := c.getActivePane()
+	c.inputMode = "goto"
+	c.inputBuffer = pane.CurrentPath
+	c.inputPrompt = "Go to: "
+	c.setStatus(c.inputPrompt + c.inputBuffer)
 }
 
 func (c *Commander) refreshPane(pane *Pane) error {
@@ -522,7 +1096,7 @@ func (c *Commander) refreshPane(pane *Pane) error {
 	}
 
 	pane.Files = make([]FileItem, 0, len(entries)+1)
-	
+
 	// Add parent directory link
 	parent := filepath.Dir(pane.CurrentPath)
 	if parent != pane.CurrentPath {
@@ -540,10 +1114,17 @@ func (c *Commander) refreshPane(pane *Pane) error {
 			continue
 		}
 
+		ext := ""
+		if !entry.IsDir() {
+			ext = strings.TrimPrefix(filepath.Ext(entry.Name()), ".")
+		}
+
 		item := FileItem{
-			Name:  entry.Name(),
-			IsDir: entry.IsDir(),
-			Path:  filepath.Join(pane.CurrentPath, entry.Name()),
+			Name:    entry.Name(),
+			Ext:     ext,
+			IsDir:   entry.IsDir(),
+			Path:    filepath.Join(pane.CurrentPath, entry.Name()),
+			ModTime: info.ModTime(),
 		}
 		if !entry.IsDir() {
 			item.Size = info.Size()
@@ -570,35 +1151,47 @@ func (c *Commander) refreshPane(pane *Pane) error {
 
 func (c *Commander) updateLayout() {
 	width, height := c.screen.Size()
-	
+
 	paneWidth := (width - 1) / 2
-	
+
 	c.leftPane.Width = paneWidth
 	c.leftPane.Height = height - 2
-	
+
 	c.rightPane.Width = width - paneWidth - 1
 	c.rightPane.Height = height - 2
 }
 
 func (c *Commander) draw() {
+	// Check if in editor mode
+	if c.editorMode {
+		c.drawEditor()
+		return
+	}
+
+	// Check if in search results mode
+	if c.searchResultsMode {
+		c.drawSearchResults()
+		return
+	}
+
 	c.screen.Clear()
 	_, height := c.screen.Size()
-	
+
 	// Draw left pane
 	c.drawPane(c.leftPane, 0, c.activePane == PaneLeft)
-	
+
 	// Draw divider
 	dividerX := c.leftPane.Width
 	for y := 0; y < height-1; y++ {
 		c.screen.SetContent(dividerX, y, '│', nil, tcell.StyleDefault)
 	}
-	
+
 	// Draw right pane
 	c.drawPane(c.rightPane, dividerX+1, c.activePane == PaneRight)
-	
+
 	// Draw status bar
 	c.drawStatusBar(height - 1)
-	
+
 	c.screen.Show()
 }
 
@@ -608,25 +1201,44 @@ func (c *Commander) drawPane(pane *Pane, offsetX int, active bool) {
 	if active {
 		headerStyle = headerStyle.Background(tcell.ColorBlue).Bold(true)
 	}
-	
+
 	// Draw path header
 	pathDisplay := pane.CurrentPath
 	if len(pathDisplay) > pane.Width-2 {
 		pathDisplay = "..." + pathDisplay[len(pathDisplay)-pane.Width+5:]
 	}
 	c.drawText(offsetX, 0, pane.Width, headerStyle, " "+pathDisplay)
-	
+
+	// Column widths: Size(8) + Date(12) + Ext(6) + spacing(4) = 30, rest for name
+	sizeColWidth := 8
+	dateColWidth := 12
+	extColWidth := 6
+	fixedWidth := sizeColWidth + dateColWidth + extColWidth + 4 // 4 for spacing
+	nameColWidth := pane.Width - fixedWidth
+	if nameColWidth < 10 {
+		nameColWidth = 10
+	}
+
+	// Draw column header
+	colHeaderStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorWhite)
+	colHeader := fmt.Sprintf(" %-*s %-*s %-*s %*s",
+		nameColWidth-1, "Name",
+		extColWidth, "Ext",
+		dateColWidth, "Modified",
+		sizeColWidth, "Size")
+	c.drawText(offsetX, 1, pane.Width, colHeaderStyle, colHeader)
+
 	// Draw files
 	visibleStart := pane.ScrollOffset
-	visibleEnd := pane.ScrollOffset + pane.Height - 3
+	visibleEnd := pane.ScrollOffset + pane.Height - 4 // -4 for path header, column header, and margins
 	if visibleEnd > len(pane.Files) {
 		visibleEnd = len(pane.Files)
 	}
 
 	for i := visibleStart; i < visibleEnd; i++ {
 		file := pane.Files[i]
-		y := i - pane.ScrollOffset + 1
-		
+		y := i - pane.ScrollOffset + 2 // +2 to account for path header and column header
+
 		itemStyle := style
 		if i == pane.SelectedIdx {
 			if active {
@@ -635,22 +1247,43 @@ func (c *Commander) drawPane(pane *Pane, offsetX int, active bool) {
 				itemStyle = tcell.StyleDefault.Background(tcell.ColorGray).Foreground(tcell.ColorWhite)
 			}
 		}
-		
-		display := file.Name
+
+		// Format name
+		displayName := file.Name
 		if file.IsDir {
-			display = "[" + display + "]"
+			displayName = "[" + displayName + "]"
 		}
-		
-		if len(display) > pane.Width-10 {
-			display = display[:pane.Width-13] + "..."
+		if len(displayName) > nameColWidth-1 {
+			displayName = displayName[:nameColWidth-4] + "..."
 		}
-		
+
+		// Format extension
+		ext := file.Ext
+		if file.IsDir {
+			ext = "<DIR>"
+		}
+		if len(ext) > extColWidth {
+			ext = ext[:extColWidth]
+		}
+
+		// Format date
+		dateStr := ""
+		if file.Name != ".." {
+			dateStr = file.ModTime.Format("Jan 02 15:04")
+		}
+
+		// Format size
 		sizeStr := ""
 		if !file.IsDir && file.Name != ".." {
 			sizeStr = formatSize(file.Size)
 		}
-		
-		c.drawText(offsetX, y, pane.Width, itemStyle, fmt.Sprintf(" %-*s %8s", pane.Width-10, display, sizeStr))
+
+		line := fmt.Sprintf(" %-*s %-*s %-*s %*s",
+			nameColWidth-1, displayName,
+			extColWidth, ext,
+			dateColWidth, dateStr,
+			sizeColWidth, sizeStr)
+		c.drawText(offsetX, y, pane.Width, itemStyle, line)
 	}
 }
 
@@ -668,18 +1301,44 @@ func (c *Commander) drawText(x, y, width int, style tcell.Style, text string) {
 
 func (c *Commander) drawStatusBar(y int) {
 	width, _ := c.screen.Size()
-	style := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorWhite)
-	
-	statusText := c.statusMsg
-	if statusText == "" {
-		statusText = "F5:Copy F6:Move F8:Del Ctrl+F:Search Ctrl+E:Edit Ctrl+N:NewDir Tab:Switch ESC:Quit"
+	style := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	msgStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorWhite).Bold(true)
+
+	// Auto-reset status message after 10 seconds
+	if c.statusMsg != "" && time.Since(c.statusMsgTime) > 10*time.Second {
+		c.setStatus("")
 	}
-	
-	if len(statusText) > width {
-		statusText = statusText[:width]
+
+	shortcuts := "^C:Copy ^X:Move DEL:Del ^F:Find ^E:Edit ^G:Goto ^N:New ^R:Rename Tab:Switch ESC:Quit"
+
+	// Calculate available space for status message
+	statusMsg := c.statusMsg
+	separator := " | "
+
+	// Build the status bar: shortcuts first, then status message
+	if statusMsg != "" {
+		availableForMsg := width - len(shortcuts) - len(separator)
+		if availableForMsg > 0 {
+			if len(statusMsg) > availableForMsg {
+				statusMsg = statusMsg[:availableForMsg-3] + "..."
+			}
+			// Draw shortcuts
+			c.drawText(0, y, len(shortcuts), style, shortcuts)
+			// Draw separator
+			c.drawText(len(shortcuts), y, len(separator), style, separator)
+			// Draw status message with highlighted style
+			c.drawText(len(shortcuts)+len(separator), y, width-len(shortcuts)-len(separator), msgStyle, statusMsg)
+		} else {
+			// Not enough room, just show shortcuts
+			c.drawText(0, y, width, style, shortcuts)
+		}
+	} else {
+		// No status message, just show shortcuts
+		if len(shortcuts) > width {
+			shortcuts = shortcuts[:width]
+		}
+		c.drawText(0, y, width, style, shortcuts)
 	}
-	
-	c.drawText(0, y, width, style, statusText)
 }
 
 func formatSize(size int64) string {
