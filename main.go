@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -29,12 +30,13 @@ const (
 )
 
 type FileItem struct {
-	Name    string
-	Ext     string
-	IsDir   bool
-	Size    int64
-	ModTime time.Time
-	Path    string
+	Name     string
+	Ext      string
+	IsDir    bool
+	Size     int64
+	ModTime  time.Time
+	Path     string
+	Selected bool
 }
 
 type Pane struct {
@@ -91,6 +93,10 @@ type Commander struct {
 	hashResult         string
 	hashAlgorithm      string
 	hashResultFilePath string
+	// Archive selection state
+	archiveSelectionMode bool
+	archiveFormats       []string
+	archiveSelectedIdx   int
 }
 
 func NewCommander() (*Commander, error) {
@@ -173,6 +179,10 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 		return c.handleHashSelectionKey(ev)
 	}
 
+	if c.archiveSelectionMode {
+		return c.handleArchiveSelectionKey(ev)
+	}
+
 	if c.hashResultMode {
 		return c.handleHashResultKey(ev)
 	}
@@ -202,6 +212,12 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 		c.enterDirectory()
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
 		c.goToParent()
+	case tcell.KeyRune:
+		// Handle spacebar for selection toggle
+		if ev.Rune() == ' ' {
+			c.toggleSelection()
+			return false
+		}
 	case tcell.KeyCtrlF:
 		c.startSearch()
 	case tcell.KeyCtrlC:
@@ -226,6 +242,8 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 		c.gotoFolder()
 	case tcell.KeyCtrlH:
 		c.startHashSelection()
+	case tcell.KeyCtrlA:
+		c.startArchiveSelection()
 	}
 
 	return false
@@ -779,6 +797,296 @@ func (c *Commander) handleHashResultKey(ev *tcell.EventKey) bool {
 	return false
 }
 
+func (c *Commander) toggleSelection() {
+	pane := c.getActivePane()
+	if len(pane.Files) == 0 {
+		return
+	}
+
+	selected := &pane.Files[pane.SelectedIdx]
+	if selected.Name == ".." {
+		c.setStatus("Cannot select parent directory link")
+		return
+	}
+
+	selected.Selected = !selected.Selected
+	if selected.Selected {
+		c.setStatus("Selected: " + selected.Name)
+	} else {
+		c.setStatus("Deselected: " + selected.Name)
+	}
+
+	// Move to next item for convenience
+	if pane.SelectedIdx < len(pane.Files)-1 {
+		c.moveSelection(1)
+	}
+}
+
+func (c *Commander) startArchiveSelection() {
+	pane := c.getActivePane()
+
+	// Check if there are any selected files or a current file to archive
+	hasSelection := false
+	for _, f := range pane.Files {
+		if f.Selected && f.Name != ".." {
+			hasSelection = true
+			break
+		}
+	}
+
+	if !hasSelection && len(pane.Files) == 0 {
+		c.setStatus("No files to archive")
+		return
+	}
+
+	if !hasSelection && len(pane.Files) > 0 {
+		selected := pane.Files[pane.SelectedIdx]
+		if selected.Name == ".." {
+			c.setStatus("Cannot archive parent directory link")
+			return
+		}
+	}
+
+	// Detect available archive formats
+	c.archiveFormats = c.getAvailableArchiveFormats()
+	if len(c.archiveFormats) == 0 {
+		c.setStatus("No archive tools available (install zip, tar, 7z, etc.)")
+		return
+	}
+
+	c.archiveSelectedIdx = 0
+	c.archiveSelectionMode = true
+	c.setStatus("Select archive format. Enter:Create, Esc:Cancel")
+}
+
+func (c *Commander) handleArchiveSelectionKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyEscape:
+		c.archiveSelectionMode = false
+		c.archiveFormats = nil
+		c.setStatus("Archive cancelled")
+		return false
+	case tcell.KeyEnter:
+		if len(c.archiveFormats) > 0 {
+			c.createArchive()
+		}
+		c.archiveSelectionMode = false
+		return false
+	case tcell.KeyUp:
+		if c.archiveSelectedIdx > 0 {
+			c.archiveSelectedIdx--
+		}
+	case tcell.KeyDown:
+		if c.archiveSelectedIdx < len(c.archiveFormats)-1 {
+			c.archiveSelectedIdx++
+		}
+	case tcell.KeyHome:
+		c.archiveSelectedIdx = 0
+	case tcell.KeyEnd:
+		c.archiveSelectedIdx = len(c.archiveFormats) - 1
+	}
+	return false
+}
+
+func (c *Commander) getAvailableArchiveFormats() []string {
+	formats := []string{}
+
+	// Check for zip
+	if _, err := exec.LookPath("zip"); err == nil {
+		formats = append(formats, ".zip")
+	}
+
+	// Check for 7z (try both 7z and 7za)
+	if _, err := exec.LookPath("7z"); err == nil {
+		formats = append(formats, ".7z")
+	} else if _, err := exec.LookPath("7za"); err == nil {
+		formats = append(formats, ".7z")
+	}
+
+	// Check for tar
+	if _, err := exec.LookPath("tar"); err == nil {
+		formats = append(formats, ".tar", ".tar.gz", ".tar.bz2", ".tar.xz")
+	}
+
+	return formats
+}
+
+func (c *Commander) createArchive() {
+	if len(c.archiveFormats) == 0 {
+		c.setStatus("Error: No archive format selected")
+		return
+	}
+
+	format := c.archiveFormats[c.archiveSelectedIdx]
+	pane := c.getActivePane()
+
+	// Collect files to archive
+	var filesToArchive []FileItem
+	for _, f := range pane.Files {
+		if f.Selected && f.Name != ".." {
+			filesToArchive = append(filesToArchive, f)
+		}
+	}
+
+	// If nothing selected, use current file
+	if len(filesToArchive) == 0 && len(pane.Files) > 0 {
+		selected := pane.Files[pane.SelectedIdx]
+		if selected.Name != ".." {
+			filesToArchive = append(filesToArchive, selected)
+		}
+	}
+
+	if len(filesToArchive) == 0 {
+		c.setStatus("Error: No files to archive")
+		c.archiveFormats = nil
+		return
+	}
+
+	// Generate archive name
+	archiveName := c.generateArchiveName(filesToArchive, format)
+	archivePath := filepath.Join(pane.CurrentPath, archiveName)
+
+	c.setStatus(fmt.Sprintf("Creating %s archive...", format))
+	if c.screen != nil {
+		c.draw()
+	}
+
+	// Create archive based on format
+	var err error
+	switch format {
+	case ".zip":
+		err = c.createZipArchive(archivePath, filesToArchive)
+	case ".7z":
+		err = c.create7zArchive(archivePath, filesToArchive)
+	case ".tar":
+		err = c.createTarArchive(archivePath, filesToArchive, "")
+	case ".tar.gz":
+		err = c.createTarArchive(archivePath, filesToArchive, "gzip")
+	case ".tar.bz2":
+		err = c.createTarArchive(archivePath, filesToArchive, "bzip2")
+	case ".tar.xz":
+		err = c.createTarArchive(archivePath, filesToArchive, "xz")
+	default:
+		err = fmt.Errorf("unsupported format: %s", format)
+	}
+
+	if err != nil {
+		c.setStatus("Error creating archive: " + err.Error())
+	} else {
+		c.setStatus("Archive created: " + archiveName)
+		// Clear selections
+		for i := range pane.Files {
+			pane.Files[i].Selected = false
+		}
+		// Refresh pane to show new archive
+		c.refreshPane(pane)
+	}
+
+	c.archiveFormats = nil
+}
+
+func (c *Commander) generateArchiveName(files []FileItem, format string) string {
+	if len(files) == 1 {
+		// Single file/folder: use its name
+		name := files[0].Name
+		// Remove existing extension if it's a file
+		if !files[0].IsDir {
+			ext := filepath.Ext(name)
+			if ext != "" {
+				name = name[:len(name)-len(ext)]
+			}
+		}
+		return name + format
+	}
+
+	// Multiple files: use timestamp
+	now := time.Now()
+	return fmt.Sprintf("archive_%s%s", now.Format("20060102_150405"), format)
+}
+
+func (c *Commander) createZipArchive(archivePath string, files []FileItem) error {
+	// Build command: zip -r archive.zip file1 file2 ...
+	args := []string{"-r", archivePath}
+	for _, f := range files {
+		args = append(args, f.Name)
+	}
+
+	// Change to the directory containing the files
+	pane := c.getActivePane()
+	
+	// Execute zip command
+	cmd := exec.Command("zip", args...)
+	cmd.Dir = pane.CurrentPath
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("zip failed: %v, output: %s", err, string(output))
+	}
+
+	return nil
+}
+
+func (c *Commander) create7zArchive(archivePath string, files []FileItem) error {
+	// Build command: 7z a archive.7z file1 file2 ...
+	args := []string{"a", archivePath}
+	for _, f := range files {
+		args = append(args, f.Name)
+	}
+
+	// Change to the directory containing the files
+	pane := c.getActivePane()
+
+	// Try different 7z command names
+	cmdNames := []string{"7z", "7za"}
+	var lastErr error
+	
+	for _, cmdName := range cmdNames {
+		cmd := exec.Command(cmdName, args...)
+		cmd.Dir = pane.CurrentPath
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		lastErr = fmt.Errorf("%s failed: %v, output: %s", cmdName, err, string(output))
+	}
+
+	return lastErr
+}
+
+func (c *Commander) createTarArchive(archivePath string, files []FileItem, compression string) error {
+	// Build command: tar -cf archive.tar file1 file2 ...
+	// or: tar -czf archive.tar.gz file1 file2 ...
+	args := []string{}
+
+	switch compression {
+	case "gzip":
+		args = append(args, "-czf")
+	case "bzip2":
+		args = append(args, "-cjf")
+	case "xz":
+		args = append(args, "-cJf")
+	default:
+		args = append(args, "-cf")
+	}
+
+	args = append(args, archivePath)
+	for _, f := range files {
+		args = append(args, f.Name)
+	}
+
+	// Change to the directory containing the files
+	pane := c.getActivePane()
+
+	// Execute tar command
+	cmd := exec.Command("tar", args...)
+	cmd.Dir = pane.CurrentPath
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("tar failed: %v, output: %s", err, string(output))
+	}
+
+	return nil
+}
+
 func (c *Commander) copyFile() {
 	pane := c.getActivePane()
 	destPane := c.getInactivePane()
@@ -1248,6 +1556,64 @@ func (c *Commander) drawHashSelection() {
 	c.screen.Show()
 }
 
+func (c *Commander) drawArchiveSelection() {
+	c.screen.Clear()
+	width, height := c.screen.Size()
+
+	// Header style
+	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
+	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkCyan).Foreground(tcell.ColorWhite)
+	normalStyle := tcell.StyleDefault
+
+	// Count selected files
+	pane := c.getActivePane()
+	selectedCount := 0
+	for _, f := range pane.Files {
+		if f.Selected && f.Name != ".." {
+			selectedCount++
+		}
+	}
+
+	// Draw header
+	title := " Select Archive Format"
+	if selectedCount > 0 {
+		title = fmt.Sprintf(" Select Archive Format (%d file(s) selected)", selectedCount)
+	} else {
+		currentFile := ""
+		if len(pane.Files) > 0 && pane.SelectedIdx < len(pane.Files) {
+			currentFile = pane.Files[pane.SelectedIdx].Name
+		}
+		title = fmt.Sprintf(" Select Archive Format for: %s", currentFile)
+	}
+	if len(title) > width-2 {
+		title = title[:width-2]
+	}
+	c.drawText(0, 0, width, headerStyle, title)
+
+	// Draw formats list
+	startY := 2
+	for i, format := range c.archiveFormats {
+		y := startY + i
+		if y >= height-2 { // Leave room for status bar
+			break
+		}
+
+		style := normalStyle
+		if i == c.archiveSelectedIdx {
+			style = selectedStyle
+		}
+
+		line := fmt.Sprintf("  %s", format)
+		c.drawText(0, y, width, style, line)
+	}
+
+	// Draw status bar
+	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	c.drawText(0, height-1, width, statusStyle, c.statusMsg)
+
+	c.screen.Show()
+}
+
 func (c *Commander) drawHashResult() {
 	c.screen.Clear()
 	width, height := c.screen.Size()
@@ -1508,6 +1874,12 @@ func (c *Commander) draw() {
 		return
 	}
 
+	// Check if in archive selection mode
+	if c.archiveSelectionMode {
+		c.drawArchiveSelection()
+		return
+	}
+
 	// Check if in hash result mode
 	if c.hashResultMode {
 		c.drawHashResult()
@@ -1593,6 +1965,10 @@ func (c *Commander) drawPane(pane *Pane, offsetX int, active bool) {
 		if file.IsDir {
 			displayName = "[" + displayName + "]"
 		}
+		// Add selection marker
+		if file.Selected {
+			displayName = "[*] " + displayName
+		}
 		if len(displayName) > nameColWidth-1 {
 			displayName = displayName[:nameColWidth-4] + "..."
 		}
@@ -1649,7 +2025,7 @@ func (c *Commander) drawStatusBar(y int) {
 		c.setStatus("")
 	}
 
-	shortcuts := "^C:Copy ^X:Move DEL:Del ^F:Find ^E:Edit ^G:Goto ^H:Hash ^N:New ^R:Rename Tab:Switch ESC:Quit"
+	shortcuts := "SPC:Select ^A:Archive ^C:Copy ^X:Move DEL:Del ^F:Find ^E:Edit ^G:Goto ^H:Hash ^N:New ^R:Rename Tab:Switch ESC:Quit"
 
 	// Calculate available space for status message
 	statusMsg := c.statusMsg
