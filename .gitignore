@@ -36,3 +36,6 @@ vendor/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Test directories
+test_diff/
