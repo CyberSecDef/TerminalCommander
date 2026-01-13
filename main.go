@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -890,10 +891,31 @@ func (c *Commander) handleArchiveSelectionKey(ev *tcell.EventKey) bool {
 
 func (c *Commander) getAvailableArchiveFormats() []string {
 	formats := []string{}
+	zipAdded := false
 
-	// Check for zip
+	// Check for zip command (cross-platform, including third-party Windows installations)
 	if _, err := exec.LookPath("zip"); err == nil {
 		formats = append(formats, ".zip")
+		zipAdded = true
+	}
+
+	// On Windows, check for additional zip creation tools
+	if runtime.GOOS == "windows" {
+		// Check for tar.exe (built-in on Windows 10+)
+		if !zipAdded {
+			if _, err := exec.LookPath("tar.exe"); err == nil {
+				formats = append(formats, ".zip")
+				zipAdded = true
+			}
+		}
+
+		// Check for PowerShell (fallback option)
+		if !zipAdded {
+			if _, err := exec.LookPath("powershell.exe"); err == nil {
+				formats = append(formats, ".zip")
+				zipAdded = true
+			}
+		}
 	}
 
 	// Check for 7z (try both 7z and 7za)
@@ -1005,24 +1027,81 @@ func (c *Commander) generateArchiveName(files []FileItem, format string) string 
 }
 
 func (c *Commander) createZipArchive(archivePath string, files []FileItem) error {
-	// Build command: zip -r archive.zip file1 file2 ...
-	args := []string{"-r", archivePath}
-	for _, f := range files {
-		args = append(args, f.Name)
-	}
-
-	// Change to the directory containing the files
 	pane := c.getActivePane()
-	
-	// Execute zip command
-	cmd := exec.Command("zip", args...)
-	cmd.Dir = pane.CurrentPath
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("zip failed: %v, output: %s", err, string(output))
+	var lastErr error
+	var attemptedMethods []string
+
+	// Method 1: Try zip command (cross-platform, including third-party Windows installations)
+	if _, err := exec.LookPath("zip"); err == nil {
+		attemptedMethods = append(attemptedMethods, "zip command")
+		// Build command: zip -r archive.zip file1 file2 ...
+		args := []string{"-r", archivePath}
+		for _, f := range files {
+			args = append(args, f.Name)
+		}
+
+		cmd := exec.Command("zip", args...)
+		cmd.Dir = pane.CurrentPath
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		lastErr = fmt.Errorf("zip command failed: %v, output: %s", err, string(output))
 	}
 
-	return nil
+	// On Windows, try additional methods
+	if runtime.GOOS == "windows" {
+		// Method 2: Try tar.exe with --format=zip (built-in on Windows 10+)
+		if _, err := exec.LookPath("tar.exe"); err == nil {
+			attemptedMethods = append(attemptedMethods, "tar.exe")
+			// Build command: tar.exe --format=zip -cf archive.zip file1 file2 ...
+			args := []string{"--format=zip", "-cf", archivePath}
+			for _, f := range files {
+				args = append(args, f.Name)
+			}
+
+			cmd := exec.Command("tar.exe", args...)
+			cmd.Dir = pane.CurrentPath
+			output, err := cmd.CombinedOutput()
+			if err == nil {
+				return nil
+			}
+			lastErr = fmt.Errorf("tar.exe failed: %v, output: %s", err, string(output))
+		}
+
+		// Method 3: Try PowerShell Compress-Archive
+		if _, err := exec.LookPath("powershell.exe"); err == nil {
+			attemptedMethods = append(attemptedMethods, "PowerShell Compress-Archive")
+			// Build file list for PowerShell
+			var pathList []string
+			for _, f := range files {
+				// Escape single quotes in file names
+				escapedName := strings.ReplaceAll(f.Name, "'", "''")
+				pathList = append(pathList, fmt.Sprintf("'%s'", escapedName))
+			}
+			paths := strings.Join(pathList, ",")
+
+			// Escape single quotes in archive path
+			escapedArchive := strings.ReplaceAll(archivePath, "'", "''")
+
+			// Build PowerShell command
+			psCmd := fmt.Sprintf("Compress-Archive -Path %s -DestinationPath '%s' -Force", paths, escapedArchive)
+			cmd := exec.Command("powershell.exe", "-NoProfile", "-Command", psCmd)
+			cmd.Dir = pane.CurrentPath
+			output, err := cmd.CombinedOutput()
+			if err == nil {
+				return nil
+			}
+			lastErr = fmt.Errorf("PowerShell Compress-Archive failed: %v, output: %s", err, string(output))
+		}
+	}
+
+	// If all methods failed, return comprehensive error
+	if len(attemptedMethods) > 0 {
+		return fmt.Errorf("all zip creation methods failed (tried: %s): %v", strings.Join(attemptedMethods, ", "), lastErr)
+	}
+
+	return fmt.Errorf("no zip creation tools available on this system")
 }
 
 func (c *Commander) create7zArchive(archivePath string, files []FileItem) error {
