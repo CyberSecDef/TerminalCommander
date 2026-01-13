@@ -808,3 +808,327 @@ if len(cmd.diffLeftLines) == 0 || len(cmd.diffRightLines) == 0 {
 t.Error("Empty files should have at least one line")
 }
 }
+
+// Test comparison mode functionality
+func TestEnterCompareMode(t *testing.T) {
+tmpDir := t.TempDir()
+
+// Create test files in subdirectories
+leftDir := filepath.Join(tmpDir, "left")
+rightDir := filepath.Join(tmpDir, "right")
+
+os.MkdirAll(leftDir, 0755)
+os.MkdirAll(rightDir, 0755)
+
+// File in both (identical)
+os.WriteFile(filepath.Join(leftDir, "same.txt"), []byte("content"), 0644)
+os.WriteFile(filepath.Join(rightDir, "same.txt"), []byte("content"), 0644)
+
+// File only in left
+os.WriteFile(filepath.Join(leftDir, "left_only.txt"), []byte("left"), 0644)
+
+// File only in right
+os.WriteFile(filepath.Join(rightDir, "right_only.txt"), []byte("right"), 0644)
+
+// File in both but different
+os.WriteFile(filepath.Join(leftDir, "different.txt"), []byte("left content"), 0644)
+os.WriteFile(filepath.Join(rightDir, "different.txt"), []byte("right content"), 0644)
+
+// Create panes
+leftPane := &Pane{CurrentPath: leftDir}
+rightPane := &Pane{CurrentPath: rightDir}
+
+cmd := &Commander{
+leftPane:  leftPane,
+rightPane: rightPane,
+}
+
+// Refresh panes to load files
+cmd.refreshPane(leftPane)
+cmd.refreshPane(rightPane)
+
+// Enter compare mode
+cmd.enterCompareMode()
+
+if !cmd.compareMode {
+t.Fatal("Compare mode should be active")
+}
+
+if cmd.compareResults == nil {
+t.Fatal("Compare results should be initialized")
+}
+
+// Check results
+if status, exists := cmd.compareResults["same.txt"]; !exists {
+t.Error("same.txt should be in compare results")
+} else if status.Status != "identical" {
+t.Errorf("same.txt should be identical, got %s", status.Status)
+}
+
+if status, exists := cmd.compareResults["left_only.txt"]; !exists {
+t.Error("left_only.txt should be in compare results")
+} else if status.Status != "left_only" {
+t.Errorf("left_only.txt should be left_only, got %s", status.Status)
+}
+
+if status, exists := cmd.compareResults["right_only.txt"]; !exists {
+t.Error("right_only.txt should be in compare results")
+} else if status.Status != "right_only" {
+t.Errorf("right_only.txt should be right_only, got %s", status.Status)
+}
+
+if status, exists := cmd.compareResults["different.txt"]; !exists {
+t.Error("different.txt should be in compare results")
+} else if status.Status != "different" {
+t.Errorf("different.txt should be different, got %s", status.Status)
+}
+}
+
+func TestExitCompareMode(t *testing.T) {
+tmpDir := t.TempDir()
+
+leftPane := &Pane{CurrentPath: tmpDir}
+rightPane := &Pane{CurrentPath: tmpDir}
+
+cmd := &Commander{
+leftPane:  leftPane,
+rightPane: rightPane,
+}
+
+cmd.refreshPane(leftPane)
+cmd.refreshPane(rightPane)
+
+// Enter compare mode
+cmd.enterCompareMode()
+
+if !cmd.compareMode {
+t.Fatal("Compare mode should be active")
+}
+
+// Exit compare mode
+cmd.exitCompareMode()
+
+if cmd.compareMode {
+t.Error("Compare mode should be inactive")
+}
+
+if cmd.compareResults != nil {
+t.Error("Compare results should be nil after exit")
+}
+}
+
+func TestSyncLeftToRight(t *testing.T) {
+tmpDir := t.TempDir()
+
+leftDir := filepath.Join(tmpDir, "left")
+rightDir := filepath.Join(tmpDir, "right")
+
+os.MkdirAll(leftDir, 0755)
+os.MkdirAll(rightDir, 0755)
+
+// File only in left - should be synced
+leftFile := filepath.Join(leftDir, "sync_me.txt")
+os.WriteFile(leftFile, []byte("content"), 0644)
+
+// Create panes
+leftPane := &Pane{CurrentPath: leftDir}
+rightPane := &Pane{CurrentPath: rightDir}
+
+cmd := &Commander{
+leftPane:   leftPane,
+rightPane:  rightPane,
+activePane: PaneLeft,
+}
+
+cmd.refreshPane(leftPane)
+cmd.refreshPane(rightPane)
+
+// Enter compare mode
+cmd.enterCompareMode()
+
+// Set selected index to the file
+leftPane.SelectedIdx = 1 // 0 is "..", 1 is our file
+
+// Sync left to right
+cmd.syncLeftToRight()
+
+// Check if file was copied
+rightFile := filepath.Join(rightDir, "sync_me.txt")
+if _, err := os.Stat(rightFile); os.IsNotExist(err) {
+t.Error("File should have been synced to right")
+}
+
+// Check content
+content, err := os.ReadFile(rightFile)
+if err != nil {
+t.Fatalf("Failed to read synced file: %v", err)
+}
+
+if string(content) != "content" {
+t.Errorf("Synced file content = %q, want %q", content, "content")
+}
+}
+
+func TestSyncRightToLeft(t *testing.T) {
+tmpDir := t.TempDir()
+
+leftDir := filepath.Join(tmpDir, "left")
+rightDir := filepath.Join(tmpDir, "right")
+
+os.MkdirAll(leftDir, 0755)
+os.MkdirAll(rightDir, 0755)
+
+// File only in right - should be synced
+rightFile := filepath.Join(rightDir, "sync_me.txt")
+os.WriteFile(rightFile, []byte("content"), 0644)
+
+// Create panes
+leftPane := &Pane{CurrentPath: leftDir}
+rightPane := &Pane{CurrentPath: rightDir}
+
+cmd := &Commander{
+leftPane:   leftPane,
+rightPane:  rightPane,
+activePane: PaneRight,
+}
+
+cmd.refreshPane(leftPane)
+cmd.refreshPane(rightPane)
+
+// Enter compare mode
+cmd.enterCompareMode()
+
+// Set selected index to the file
+rightPane.SelectedIdx = 1 // 0 is "..", 1 is our file
+
+// Sync right to left
+cmd.syncRightToLeft()
+
+// Check if file was copied
+leftFile := filepath.Join(leftDir, "sync_me.txt")
+if _, err := os.Stat(leftFile); os.IsNotExist(err) {
+t.Error("File should have been synced to left")
+}
+
+// Check content
+content, err := os.ReadFile(leftFile)
+if err != nil {
+t.Fatalf("Failed to read synced file: %v", err)
+}
+
+if string(content) != "content" {
+t.Errorf("Synced file content = %q, want %q", content, "content")
+}
+}
+
+func TestSyncBothWays(t *testing.T) {
+tmpDir := t.TempDir()
+
+leftDir := filepath.Join(tmpDir, "left")
+rightDir := filepath.Join(tmpDir, "right")
+
+os.MkdirAll(leftDir, 0755)
+os.MkdirAll(rightDir, 0755)
+
+// File only in left
+os.WriteFile(filepath.Join(leftDir, "left_only.txt"), []byte("left"), 0644)
+
+// File only in right
+os.WriteFile(filepath.Join(rightDir, "right_only.txt"), []byte("right"), 0644)
+
+// Create panes
+leftPane := &Pane{CurrentPath: leftDir}
+rightPane := &Pane{CurrentPath: rightDir}
+
+cmd := &Commander{
+leftPane:  leftPane,
+rightPane: rightPane,
+}
+
+cmd.refreshPane(leftPane)
+cmd.refreshPane(rightPane)
+
+// Enter compare mode
+cmd.enterCompareMode()
+
+// Sync both ways
+cmd.syncBothWays()
+
+// Check if left_only.txt was copied to right
+if _, err := os.Stat(filepath.Join(rightDir, "left_only.txt")); os.IsNotExist(err) {
+t.Error("left_only.txt should have been synced to right")
+}
+
+// Check if right_only.txt was copied to left
+if _, err := os.Stat(filepath.Join(leftDir, "right_only.txt")); os.IsNotExist(err) {
+t.Error("right_only.txt should have been synced to left")
+}
+}
+
+func TestCompareModeDifferentFiles(t *testing.T) {
+tmpDir := t.TempDir()
+
+leftDir := filepath.Join(tmpDir, "left")
+rightDir := filepath.Join(tmpDir, "right")
+
+os.MkdirAll(leftDir, 0755)
+os.MkdirAll(rightDir, 0755)
+
+// Create files with same name but different size
+os.WriteFile(filepath.Join(leftDir, "file.txt"), []byte("short"), 0644)
+os.WriteFile(filepath.Join(rightDir, "file.txt"), []byte("longer content"), 0644)
+
+// Create panes
+leftPane := &Pane{CurrentPath: leftDir}
+rightPane := &Pane{CurrentPath: rightDir}
+
+cmd := &Commander{
+leftPane:  leftPane,
+rightPane: rightPane,
+}
+
+cmd.refreshPane(leftPane)
+cmd.refreshPane(rightPane)
+cmd.enterCompareMode()
+
+// Check that file is marked as different
+if status, exists := cmd.compareResults["file.txt"]; !exists {
+t.Error("file.txt should be in compare results")
+} else if status.Status != "different" {
+t.Errorf("file.txt should be different (different sizes), got %s", status.Status)
+}
+}
+
+func TestCompareModeIdenticalDirectories(t *testing.T) {
+tmpDir := t.TempDir()
+
+leftDir := filepath.Join(tmpDir, "left")
+rightDir := filepath.Join(tmpDir, "right")
+
+os.MkdirAll(leftDir, 0755)
+os.MkdirAll(rightDir, 0755)
+
+// Create subdirectories with same name
+os.MkdirAll(filepath.Join(leftDir, "subdir"), 0755)
+os.MkdirAll(filepath.Join(rightDir, "subdir"), 0755)
+
+// Create panes
+leftPane := &Pane{CurrentPath: leftDir}
+rightPane := &Pane{CurrentPath: rightDir}
+
+cmd := &Commander{
+leftPane:  leftPane,
+rightPane: rightPane,
+}
+
+cmd.refreshPane(leftPane)
+cmd.refreshPane(rightPane)
+cmd.enterCompareMode()
+
+// Check that directory is marked as identical (by name only, not contents)
+if status, exists := cmd.compareResults["subdir"]; !exists {
+t.Error("subdir should be in compare results")
+} else if status.Status != "identical" {
+t.Errorf("subdir should be identical (same name), got %s", status.Status)
+}
+}
