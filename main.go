@@ -178,7 +178,7 @@ func initThemes() []Theme {
 			SelectedInactive:     tcell.ColorGray,
 			SelectedText:         tcell.ColorWhite,
 			StatusBarBackground:  tcell.ColorDarkGray,
-			StatusBarText:        tcell.ColorBlack,
+			StatusBarText:        tcell.ColorWhite,
 			StatusMsgText:        tcell.ColorWhite,
 			ColumnHeader:         tcell.ColorDarkGray,
 			ColumnHeaderText:     tcell.ColorWhite,
@@ -199,7 +199,7 @@ func initThemes() []Theme {
 			Foreground:           tcell.ColorBlack,
 			HeaderActive:         tcell.ColorBlue,
 			HeaderInactive:       tcell.ColorSilver,
-			HeaderText:           tcell.ColorWhite,
+			HeaderText:           tcell.ColorBlack,
 			SelectedActive:       tcell.ColorSkyblue,
 			SelectedInactive:     tcell.ColorSilver,
 			SelectedText:         tcell.ColorBlack,
@@ -319,6 +319,36 @@ func (c *Commander) setStatus(msg string) {
 
 // getTheme returns the current theme
 func (c *Commander) getTheme() *Theme {
+	// Safety check: ensure themes slice is not empty
+	if len(c.themes) == 0 {
+		// Return a default dark theme if no themes are loaded
+		return &Theme{
+			Name:                 "Default",
+			Background:           tcell.ColorBlack,
+			Foreground:           tcell.ColorWhite,
+			HeaderActive:         tcell.ColorBlue,
+			HeaderInactive:       tcell.ColorDarkBlue,
+			HeaderText:           tcell.ColorWhite,
+			SelectedActive:       tcell.ColorDarkCyan,
+			SelectedInactive:     tcell.ColorGray,
+			SelectedText:         tcell.ColorWhite,
+			StatusBarBackground:  tcell.ColorDarkGray,
+			StatusBarText:        tcell.ColorWhite,
+			StatusMsgText:        tcell.ColorWhite,
+			ColumnHeader:         tcell.ColorDarkGray,
+			ColumnHeaderText:     tcell.ColorWhite,
+			LineNumber:           tcell.ColorYellow,
+			LineNumberBackground: tcell.ColorDarkGray,
+			DiffAdd:              tcell.ColorDarkGreen,
+			DiffDelete:           tcell.ColorDarkRed,
+			DiffModify:           tcell.ColorDarkGoldenrod,
+			CompareLeftOnly:      tcell.ColorDarkCyan,
+			CompareRightOnly:     tcell.ColorDarkCyan,
+			CompareDifferent:     tcell.ColorYellow,
+			CompareIdentical:     tcell.ColorDarkGreen,
+		}
+	}
+	
 	if c.currentTheme >= 0 && c.currentTheme < len(c.themes) {
 		return &c.themes[c.currentTheme]
 	}
