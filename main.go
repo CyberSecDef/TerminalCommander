@@ -226,54 +226,54 @@ func initThemes() []Theme {
 		// Solarized Dark
 		{
 			Name:                 "Solarized Dark",
-			Background:           tcell.NewRGBColor(0, 43, 54),      // base03
-			Foreground:           tcell.NewRGBColor(131, 148, 150),  // base0
-			HeaderActive:         tcell.NewRGBColor(38, 139, 210),   // blue
-			HeaderInactive:       tcell.NewRGBColor(88, 110, 117),   // base01
-			HeaderText:           tcell.NewRGBColor(253, 246, 227),  // base3
-			SelectedActive:       tcell.NewRGBColor(42, 161, 152),   // cyan
-			SelectedInactive:     tcell.NewRGBColor(88, 110, 117),   // base01
-			SelectedText:         tcell.NewRGBColor(253, 246, 227),  // base3
-			StatusBarBackground:  tcell.NewRGBColor(7, 54, 66),      // base02
-			StatusBarText:        tcell.NewRGBColor(101, 123, 131),  // base00
-			StatusMsgText:        tcell.NewRGBColor(147, 161, 161),  // base1
-			ColumnHeader:         tcell.NewRGBColor(7, 54, 66),      // base02
-			ColumnHeaderText:     tcell.NewRGBColor(147, 161, 161),  // base1
-			LineNumber:           tcell.NewRGBColor(181, 137, 0),    // yellow
-			LineNumberBackground: tcell.NewRGBColor(7, 54, 66),      // base02
-			DiffAdd:              tcell.NewRGBColor(133, 153, 0),    // green
-			DiffDelete:           tcell.NewRGBColor(220, 50, 47),    // red
-			DiffModify:           tcell.NewRGBColor(203, 75, 22),    // orange
-			CompareLeftOnly:      tcell.NewRGBColor(42, 161, 152),   // cyan
-			CompareRightOnly:     tcell.NewRGBColor(42, 161, 152),   // cyan
-			CompareDifferent:     tcell.NewRGBColor(181, 137, 0),    // yellow
-			CompareIdentical:     tcell.NewRGBColor(133, 153, 0),    // green
+			Background:           tcell.NewRGBColor(0, 43, 54),     // base03
+			Foreground:           tcell.NewRGBColor(131, 148, 150), // base0
+			HeaderActive:         tcell.NewRGBColor(38, 139, 210),  // blue
+			HeaderInactive:       tcell.NewRGBColor(88, 110, 117),  // base01
+			HeaderText:           tcell.NewRGBColor(253, 246, 227), // base3
+			SelectedActive:       tcell.NewRGBColor(42, 161, 152),  // cyan
+			SelectedInactive:     tcell.NewRGBColor(88, 110, 117),  // base01
+			SelectedText:         tcell.NewRGBColor(253, 246, 227), // base3
+			StatusBarBackground:  tcell.NewRGBColor(7, 54, 66),     // base02
+			StatusBarText:        tcell.NewRGBColor(101, 123, 131), // base00
+			StatusMsgText:        tcell.NewRGBColor(147, 161, 161), // base1
+			ColumnHeader:         tcell.NewRGBColor(7, 54, 66),     // base02
+			ColumnHeaderText:     tcell.NewRGBColor(147, 161, 161), // base1
+			LineNumber:           tcell.NewRGBColor(181, 137, 0),   // yellow
+			LineNumberBackground: tcell.NewRGBColor(7, 54, 66),     // base02
+			DiffAdd:              tcell.NewRGBColor(133, 153, 0),   // green
+			DiffDelete:           tcell.NewRGBColor(220, 50, 47),   // red
+			DiffModify:           tcell.NewRGBColor(203, 75, 22),   // orange
+			CompareLeftOnly:      tcell.NewRGBColor(42, 161, 152),  // cyan
+			CompareRightOnly:     tcell.NewRGBColor(42, 161, 152),  // cyan
+			CompareDifferent:     tcell.NewRGBColor(181, 137, 0),   // yellow
+			CompareIdentical:     tcell.NewRGBColor(133, 153, 0),   // green
 		},
 		// Solarized Light
 		{
 			Name:                 "Solarized Light",
-			Background:           tcell.NewRGBColor(253, 246, 227),  // base3
-			Foreground:           tcell.NewRGBColor(101, 123, 131),  // base00
-			HeaderActive:         tcell.NewRGBColor(38, 139, 210),   // blue
-			HeaderInactive:       tcell.NewRGBColor(238, 232, 213),  // base2
-			HeaderText:           tcell.NewRGBColor(0, 43, 54),      // base03
-			SelectedActive:       tcell.NewRGBColor(42, 161, 152),   // cyan
-			SelectedInactive:     tcell.NewRGBColor(238, 232, 213),  // base2
-			SelectedText:         tcell.NewRGBColor(0, 43, 54),      // base03
-			StatusBarBackground:  tcell.NewRGBColor(238, 232, 213),  // base2
-			StatusBarText:        tcell.NewRGBColor(88, 110, 117),   // base01
-			StatusMsgText:        tcell.NewRGBColor(88, 110, 117),   // base01
-			ColumnHeader:         tcell.NewRGBColor(238, 232, 213),  // base2
-			ColumnHeaderText:     tcell.NewRGBColor(88, 110, 117),   // base01
-			LineNumber:           tcell.NewRGBColor(181, 137, 0),    // yellow
-			LineNumberBackground: tcell.NewRGBColor(238, 232, 213),  // base2
-			DiffAdd:              tcell.NewRGBColor(133, 153, 0),    // green
-			DiffDelete:           tcell.NewRGBColor(220, 50, 47),    // red
-			DiffModify:           tcell.NewRGBColor(203, 75, 22),    // orange
-			CompareLeftOnly:      tcell.NewRGBColor(42, 161, 152),   // cyan
-			CompareRightOnly:     tcell.NewRGBColor(42, 161, 152),   // cyan
-			CompareDifferent:     tcell.NewRGBColor(181, 137, 0),    // yellow
-			CompareIdentical:     tcell.NewRGBColor(133, 153, 0),    // green
+			Background:           tcell.NewRGBColor(253, 246, 227), // base3
+			Foreground:           tcell.NewRGBColor(101, 123, 131), // base00
+			HeaderActive:         tcell.NewRGBColor(38, 139, 210),  // blue
+			HeaderInactive:       tcell.NewRGBColor(238, 232, 213), // base2
+			HeaderText:           tcell.NewRGBColor(0, 43, 54),     // base03
+			SelectedActive:       tcell.NewRGBColor(42, 161, 152),  // cyan
+			SelectedInactive:     tcell.NewRGBColor(238, 232, 213), // base2
+			SelectedText:         tcell.NewRGBColor(0, 43, 54),     // base03
+			StatusBarBackground:  tcell.NewRGBColor(238, 232, 213), // base2
+			StatusBarText:        tcell.NewRGBColor(88, 110, 117),  // base01
+			StatusMsgText:        tcell.NewRGBColor(88, 110, 117),  // base01
+			ColumnHeader:         tcell.NewRGBColor(238, 232, 213), // base2
+			ColumnHeaderText:     tcell.NewRGBColor(88, 110, 117),  // base01
+			LineNumber:           tcell.NewRGBColor(181, 137, 0),   // yellow
+			LineNumberBackground: tcell.NewRGBColor(238, 232, 213), // base2
+			DiffAdd:              tcell.NewRGBColor(133, 153, 0),   // green
+			DiffDelete:           tcell.NewRGBColor(220, 50, 47),   // red
+			DiffModify:           tcell.NewRGBColor(203, 75, 22),   // orange
+			CompareLeftOnly:      tcell.NewRGBColor(42, 161, 152),  // cyan
+			CompareRightOnly:     tcell.NewRGBColor(42, 161, 152),  // cyan
+			CompareDifferent:     tcell.NewRGBColor(181, 137, 0),   // yellow
+			CompareIdentical:     tcell.NewRGBColor(133, 153, 0),   // green
 		},
 	}
 }
@@ -330,7 +330,7 @@ func (c *Commander) getTheme() *Theme {
 		theme := getDefaultTheme()
 		return &theme
 	}
-	
+
 	if c.currentTheme >= 0 && c.currentTheme < len(c.themes) {
 		return &c.themes[c.currentTheme]
 	}
@@ -346,13 +346,13 @@ func (c *Commander) cycleTheme() {
 	}
 
 	theme := c.getTheme()
-	
+
 	// Update screen default style
 	c.screen.SetStyle(tcell.StyleDefault.
 		Foreground(theme.Foreground).
 		Background(theme.Background))
 	c.screen.Clear()
-	
+
 	c.setStatus(fmt.Sprintf("Theme: %s", theme.Name))
 }
 
@@ -2515,10 +2515,15 @@ func (c *Commander) draw() {
 func (c *Commander) drawPane(pane *Pane, offsetX int, active bool) {
 	theme := c.getTheme()
 	style := tcell.StyleDefault.Foreground(theme.Foreground).Background(theme.Background)
-	
+
 	headerStyle := tcell.StyleDefault.Background(theme.HeaderInactive).Foreground(theme.HeaderText)
 	if active {
 		headerStyle = tcell.StyleDefault.Background(theme.HeaderActive).Foreground(theme.HeaderText).Bold(true)
+	}
+
+	// Clear the entire pane area with background theme
+	for y := 0; y < pane.Height; y++ {
+		c.drawText(offsetX, y, pane.Width, style, "")
 	}
 
 	// Draw path header
