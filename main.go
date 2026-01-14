@@ -163,35 +163,40 @@ type CompareStatus struct {
 	RightFile *FileItem
 }
 
+// getDefaultTheme returns the default Dark theme
+func getDefaultTheme() Theme {
+	return Theme{
+		Name:                 "Dark",
+		Background:           tcell.ColorBlack,
+		Foreground:           tcell.ColorWhite,
+		HeaderActive:         tcell.ColorBlue,
+		HeaderInactive:       tcell.ColorDarkBlue,
+		HeaderText:           tcell.ColorWhite,
+		SelectedActive:       tcell.ColorDarkCyan,
+		SelectedInactive:     tcell.ColorGray,
+		SelectedText:         tcell.ColorWhite,
+		StatusBarBackground:  tcell.ColorDarkGray,
+		StatusBarText:        tcell.ColorWhite,
+		StatusMsgText:        tcell.ColorWhite,
+		ColumnHeader:         tcell.ColorDarkGray,
+		ColumnHeaderText:     tcell.ColorWhite,
+		LineNumber:           tcell.ColorYellow,
+		LineNumberBackground: tcell.ColorDarkGray,
+		DiffAdd:              tcell.ColorDarkGreen,
+		DiffDelete:           tcell.ColorDarkRed,
+		DiffModify:           tcell.ColorDarkGoldenrod,
+		CompareLeftOnly:      tcell.ColorDarkCyan,
+		CompareRightOnly:     tcell.ColorDarkCyan,
+		CompareDifferent:     tcell.ColorYellow,
+		CompareIdentical:     tcell.ColorDarkGreen,
+	}
+}
+
 // initThemes creates the predefined color themes
 func initThemes() []Theme {
 	return []Theme{
 		// Dark theme (default)
-		{
-			Name:                 "Dark",
-			Background:           tcell.ColorBlack,
-			Foreground:           tcell.ColorWhite,
-			HeaderActive:         tcell.ColorBlue,
-			HeaderInactive:       tcell.ColorDarkBlue,
-			HeaderText:           tcell.ColorWhite,
-			SelectedActive:       tcell.ColorDarkCyan,
-			SelectedInactive:     tcell.ColorGray,
-			SelectedText:         tcell.ColorWhite,
-			StatusBarBackground:  tcell.ColorDarkGray,
-			StatusBarText:        tcell.ColorWhite,
-			StatusMsgText:        tcell.ColorWhite,
-			ColumnHeader:         tcell.ColorDarkGray,
-			ColumnHeaderText:     tcell.ColorWhite,
-			LineNumber:           tcell.ColorYellow,
-			LineNumberBackground: tcell.ColorDarkGray,
-			DiffAdd:              tcell.ColorDarkGreen,
-			DiffDelete:           tcell.ColorDarkRed,
-			DiffModify:           tcell.ColorDarkGoldenrod,
-			CompareLeftOnly:      tcell.ColorDarkCyan,
-			CompareRightOnly:     tcell.ColorDarkCyan,
-			CompareDifferent:     tcell.ColorYellow,
-			CompareIdentical:     tcell.ColorDarkGreen,
-		},
+		getDefaultTheme(),
 		// Light theme
 		{
 			Name:                 "Light",
@@ -321,32 +326,9 @@ func (c *Commander) setStatus(msg string) {
 func (c *Commander) getTheme() *Theme {
 	// Safety check: ensure themes slice is not empty
 	if len(c.themes) == 0 {
-		// Return a default dark theme if no themes are loaded
-		return &Theme{
-			Name:                 "Default",
-			Background:           tcell.ColorBlack,
-			Foreground:           tcell.ColorWhite,
-			HeaderActive:         tcell.ColorBlue,
-			HeaderInactive:       tcell.ColorDarkBlue,
-			HeaderText:           tcell.ColorWhite,
-			SelectedActive:       tcell.ColorDarkCyan,
-			SelectedInactive:     tcell.ColorGray,
-			SelectedText:         tcell.ColorWhite,
-			StatusBarBackground:  tcell.ColorDarkGray,
-			StatusBarText:        tcell.ColorWhite,
-			StatusMsgText:        tcell.ColorWhite,
-			ColumnHeader:         tcell.ColorDarkGray,
-			ColumnHeaderText:     tcell.ColorWhite,
-			LineNumber:           tcell.ColorYellow,
-			LineNumberBackground: tcell.ColorDarkGray,
-			DiffAdd:              tcell.ColorDarkGreen,
-			DiffDelete:           tcell.ColorDarkRed,
-			DiffModify:           tcell.ColorDarkGoldenrod,
-			CompareLeftOnly:      tcell.ColorDarkCyan,
-			CompareRightOnly:     tcell.ColorDarkCyan,
-			CompareDifferent:     tcell.ColorYellow,
-			CompareIdentical:     tcell.ColorDarkGreen,
-		}
+		// Return default theme if no themes are loaded
+		theme := getDefaultTheme()
+		return &theme
 	}
 	
 	if c.currentTheme >= 0 && c.currentTheme < len(c.themes) {
