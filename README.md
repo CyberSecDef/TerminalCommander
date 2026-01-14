@@ -79,6 +79,14 @@ See [QUICKSTART.md](QUICKSTART.md) for a complete tutorial.
   - Automatic re-comparison after sync
   - Statistics display showing total files, left-only, right-only, different, and identical counts
 - **Help System** (?): Comprehensive help pane showing all keyboard shortcuts and functions
+- **Color Themes** (t/T): Multiple color themes to choose from:
+  - **Dark** (default): Classic dark theme with black background and white text
+  - **Light**: Light theme with white background and dark text for daytime use
+  - **Solarized Dark**: Dark variant of the popular Solarized color scheme
+  - **Solarized Light**: Light variant of the Solarized color scheme
+  - Cycle through themes with t/T key
+  - All UI elements update immediately when theme changes
+  - Theme applies to all modes (file browser, editor, diff, search, etc.)
 - **Visual Indicators**: 
   - Directories shown in brackets [dirname]
   - Selected items marked with `[*]` prefix
@@ -175,6 +183,7 @@ terminalcommander.exe
 | b/B | Create new blank file |
 | f/F | Compare files (diff mode) |
 | y/Y | Toggle folder comparison mode |
+| t/T | Cycle through color themes |
 | ? | Show help |
 | Ctrl+Q / ESC | Quit application |
 

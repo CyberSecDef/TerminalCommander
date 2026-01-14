@@ -65,6 +65,32 @@ type DiffBlock struct {
 	Type       string // "add", "delete", "modify", "equal"
 }
 
+type Theme struct {
+	Name                 string
+	Background           tcell.Color
+	Foreground           tcell.Color
+	HeaderActive         tcell.Color
+	HeaderInactive       tcell.Color
+	HeaderText           tcell.Color
+	SelectedActive       tcell.Color
+	SelectedInactive     tcell.Color
+	SelectedText         tcell.Color
+	StatusBarBackground  tcell.Color
+	StatusBarText        tcell.Color
+	StatusMsgText        tcell.Color
+	ColumnHeader         tcell.Color
+	ColumnHeaderText     tcell.Color
+	LineNumber           tcell.Color
+	LineNumberBackground tcell.Color
+	DiffAdd              tcell.Color
+	DiffDelete           tcell.Color
+	DiffModify           tcell.Color
+	CompareLeftOnly      tcell.Color
+	CompareRightOnly     tcell.Color
+	CompareDifferent     tcell.Color
+	CompareIdentical     tcell.Color
+}
+
 type Commander struct {
 	screen        tcell.Screen
 	leftPane      *Pane
@@ -126,12 +152,130 @@ type Commander struct {
 	compareResults map[string]CompareStatus
 	// Help mode state
 	helpMode bool
+	// Theme state
+	currentTheme int
+	themes       []Theme
 }
 
 type CompareStatus struct {
 	Status    string // "left_only", "right_only", "different", "identical"
 	LeftFile  *FileItem
 	RightFile *FileItem
+}
+
+// getDefaultTheme returns the default Dark theme
+func getDefaultTheme() Theme {
+	return Theme{
+		Name:                 "Dark",
+		Background:           tcell.ColorBlack,
+		Foreground:           tcell.ColorWhite,
+		HeaderActive:         tcell.ColorBlue,
+		HeaderInactive:       tcell.ColorDarkBlue,
+		HeaderText:           tcell.ColorWhite,
+		SelectedActive:       tcell.ColorDarkCyan,
+		SelectedInactive:     tcell.ColorGray,
+		SelectedText:         tcell.ColorWhite,
+		StatusBarBackground:  tcell.ColorDarkGray,
+		StatusBarText:        tcell.ColorWhite,
+		StatusMsgText:        tcell.ColorWhite,
+		ColumnHeader:         tcell.ColorDarkGray,
+		ColumnHeaderText:     tcell.ColorWhite,
+		LineNumber:           tcell.ColorYellow,
+		LineNumberBackground: tcell.ColorDarkGray,
+		DiffAdd:              tcell.ColorDarkGreen,
+		DiffDelete:           tcell.ColorDarkRed,
+		DiffModify:           tcell.ColorDarkGoldenrod,
+		CompareLeftOnly:      tcell.ColorDarkCyan,
+		CompareRightOnly:     tcell.ColorDarkCyan,
+		CompareDifferent:     tcell.ColorYellow,
+		CompareIdentical:     tcell.ColorDarkGreen,
+	}
+}
+
+// initThemes creates the predefined color themes
+func initThemes() []Theme {
+	return []Theme{
+		// Dark theme (default)
+		getDefaultTheme(),
+		// Light theme
+		{
+			Name:                 "Light",
+			Background:           tcell.ColorWhite,
+			Foreground:           tcell.ColorBlack,
+			HeaderActive:         tcell.ColorBlue,
+			HeaderInactive:       tcell.ColorSilver,
+			HeaderText:           tcell.ColorBlack,
+			SelectedActive:       tcell.ColorSkyblue,
+			SelectedInactive:     tcell.ColorSilver,
+			SelectedText:         tcell.ColorBlack,
+			StatusBarBackground:  tcell.ColorSilver,
+			StatusBarText:        tcell.ColorBlack,
+			StatusMsgText:        tcell.ColorBlack,
+			ColumnHeader:         tcell.ColorSilver,
+			ColumnHeaderText:     tcell.ColorBlack,
+			LineNumber:           tcell.ColorNavy,
+			LineNumberBackground: tcell.ColorSilver,
+			DiffAdd:              tcell.ColorLightGreen,
+			DiffDelete:           tcell.ColorLightCoral,
+			DiffModify:           tcell.ColorLightGoldenrodYellow,
+			CompareLeftOnly:      tcell.ColorSkyblue,
+			CompareRightOnly:     tcell.ColorSkyblue,
+			CompareDifferent:     tcell.ColorGold,
+			CompareIdentical:     tcell.ColorLightGreen,
+		},
+		// Solarized Dark
+		{
+			Name:                 "Solarized Dark",
+			Background:           tcell.NewRGBColor(0, 43, 54),      // base03
+			Foreground:           tcell.NewRGBColor(131, 148, 150),  // base0
+			HeaderActive:         tcell.NewRGBColor(38, 139, 210),   // blue
+			HeaderInactive:       tcell.NewRGBColor(88, 110, 117),   // base01
+			HeaderText:           tcell.NewRGBColor(253, 246, 227),  // base3
+			SelectedActive:       tcell.NewRGBColor(42, 161, 152),   // cyan
+			SelectedInactive:     tcell.NewRGBColor(88, 110, 117),   // base01
+			SelectedText:         tcell.NewRGBColor(253, 246, 227),  // base3
+			StatusBarBackground:  tcell.NewRGBColor(7, 54, 66),      // base02
+			StatusBarText:        tcell.NewRGBColor(101, 123, 131),  // base00
+			StatusMsgText:        tcell.NewRGBColor(147, 161, 161),  // base1
+			ColumnHeader:         tcell.NewRGBColor(7, 54, 66),      // base02
+			ColumnHeaderText:     tcell.NewRGBColor(147, 161, 161),  // base1
+			LineNumber:           tcell.NewRGBColor(181, 137, 0),    // yellow
+			LineNumberBackground: tcell.NewRGBColor(7, 54, 66),      // base02
+			DiffAdd:              tcell.NewRGBColor(133, 153, 0),    // green
+			DiffDelete:           tcell.NewRGBColor(220, 50, 47),    // red
+			DiffModify:           tcell.NewRGBColor(203, 75, 22),    // orange
+			CompareLeftOnly:      tcell.NewRGBColor(42, 161, 152),   // cyan
+			CompareRightOnly:     tcell.NewRGBColor(42, 161, 152),   // cyan
+			CompareDifferent:     tcell.NewRGBColor(181, 137, 0),    // yellow
+			CompareIdentical:     tcell.NewRGBColor(133, 153, 0),    // green
+		},
+		// Solarized Light
+		{
+			Name:                 "Solarized Light",
+			Background:           tcell.NewRGBColor(253, 246, 227),  // base3
+			Foreground:           tcell.NewRGBColor(101, 123, 131),  // base00
+			HeaderActive:         tcell.NewRGBColor(38, 139, 210),   // blue
+			HeaderInactive:       tcell.NewRGBColor(238, 232, 213),  // base2
+			HeaderText:           tcell.NewRGBColor(0, 43, 54),      // base03
+			SelectedActive:       tcell.NewRGBColor(42, 161, 152),   // cyan
+			SelectedInactive:     tcell.NewRGBColor(238, 232, 213),  // base2
+			SelectedText:         tcell.NewRGBColor(0, 43, 54),      // base03
+			StatusBarBackground:  tcell.NewRGBColor(238, 232, 213),  // base2
+			StatusBarText:        tcell.NewRGBColor(88, 110, 117),   // base01
+			StatusMsgText:        tcell.NewRGBColor(88, 110, 117),   // base01
+			ColumnHeader:         tcell.NewRGBColor(238, 232, 213),  // base2
+			ColumnHeaderText:     tcell.NewRGBColor(88, 110, 117),   // base01
+			LineNumber:           tcell.NewRGBColor(181, 137, 0),    // yellow
+			LineNumberBackground: tcell.NewRGBColor(238, 232, 213),  // base2
+			DiffAdd:              tcell.NewRGBColor(133, 153, 0),    // green
+			DiffDelete:           tcell.NewRGBColor(220, 50, 47),    // red
+			DiffModify:           tcell.NewRGBColor(203, 75, 22),    // orange
+			CompareLeftOnly:      tcell.NewRGBColor(42, 161, 152),   // cyan
+			CompareRightOnly:     tcell.NewRGBColor(42, 161, 152),   // cyan
+			CompareDifferent:     tcell.NewRGBColor(181, 137, 0),    // yellow
+			CompareIdentical:     tcell.NewRGBColor(133, 153, 0),    // green
+		},
+	}
 }
 
 func NewCommander() (*Commander, error) {
@@ -143,9 +287,13 @@ func NewCommander() (*Commander, error) {
 		return nil, err
 	}
 
+	// Initialize themes
+	themes := initThemes()
+
+	// Set default theme (Dark theme)
 	screen.SetStyle(tcell.StyleDefault.
-		Foreground(tcell.ColorWhite).
-		Background(tcell.ColorBlack))
+		Foreground(themes[0].Foreground).
+		Background(themes[0].Background))
 	screen.Clear()
 
 	cwd, err := os.Getwd()
@@ -154,8 +302,10 @@ func NewCommander() (*Commander, error) {
 	}
 
 	cmd := &Commander{
-		screen:     screen,
-		activePane: PaneLeft,
+		screen:       screen,
+		activePane:   PaneLeft,
+		currentTheme: 0,
+		themes:       themes,
 		leftPane: &Pane{
 			CurrentPath: cwd,
 		},
@@ -170,6 +320,40 @@ func NewCommander() (*Commander, error) {
 func (c *Commander) setStatus(msg string) {
 	c.statusMsg = msg
 	c.statusMsgTime = time.Now()
+}
+
+// getTheme returns the current theme
+func (c *Commander) getTheme() *Theme {
+	// Safety check: ensure themes slice is not empty
+	if len(c.themes) == 0 {
+		// Return default theme if no themes are loaded
+		theme := getDefaultTheme()
+		return &theme
+	}
+	
+	if c.currentTheme >= 0 && c.currentTheme < len(c.themes) {
+		return &c.themes[c.currentTheme]
+	}
+	// Fallback to first theme if index is invalid
+	return &c.themes[0]
+}
+
+// cycleTheme switches to the next theme in the list
+func (c *Commander) cycleTheme() {
+	c.currentTheme++
+	if c.currentTheme >= len(c.themes) {
+		c.currentTheme = 0
+	}
+
+	theme := c.getTheme()
+	
+	// Update screen default style
+	c.screen.SetStyle(tcell.StyleDefault.
+		Foreground(theme.Foreground).
+		Background(theme.Background))
+	c.screen.Clear()
+	
+	c.setStatus(fmt.Sprintf("Theme: %s", theme.Name))
 }
 
 func (c *Commander) Run() error {
@@ -355,6 +539,12 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 		// Handle '?' for help
 		if ev.Rune() == '?' {
 			c.helpMode = true
+			return false
+		}
+
+		// Handle 't' or 'T' for theme cycling
+		if ev.Rune() == 't' || ev.Rune() == 'T' {
+			c.cycleTheme()
 			return false
 		}
 	case tcell.KeyDelete:
@@ -1729,12 +1919,13 @@ func (c *Commander) exitEditor() {
 func (c *Commander) drawSearchResults() {
 	c.screen.Clear()
 	width, height := c.screen.Size()
+	theme := c.getTheme()
 
 	// Header style
-	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
-	colHeaderStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorWhite)
-	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkCyan).Foreground(tcell.ColorWhite)
-	normalStyle := tcell.StyleDefault
+	headerStyle := tcell.StyleDefault.Background(theme.HeaderActive).Foreground(theme.HeaderText).Bold(true)
+	colHeaderStyle := tcell.StyleDefault.Background(theme.ColumnHeader).Foreground(theme.ColumnHeaderText)
+	selectedStyle := tcell.StyleDefault.Background(theme.SelectedActive).Foreground(theme.SelectedText)
+	normalStyle := tcell.StyleDefault.Foreground(theme.Foreground).Background(theme.Background)
 
 	// Draw header
 	title := fmt.Sprintf(" Search Results: %d matches in %s", len(c.searchResults), c.searchBaseDir)
@@ -1806,7 +1997,7 @@ func (c *Commander) drawSearchResults() {
 	}
 
 	// Draw status bar
-	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	statusStyle := tcell.StyleDefault.Background(theme.StatusBarBackground).Foreground(theme.StatusBarText)
 	statusLeft := c.statusMsg
 	statusRight := fmt.Sprintf("%d/%d", c.searchResultIdx+1, len(c.searchResults))
 	padding := width - len(statusLeft) - len(statusRight)
@@ -1825,11 +2016,12 @@ func (c *Commander) drawSearchResults() {
 func (c *Commander) drawHashSelection() {
 	c.screen.Clear()
 	width, height := c.screen.Size()
+	theme := c.getTheme()
 
 	// Header style
-	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
-	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkCyan).Foreground(tcell.ColorWhite)
-	normalStyle := tcell.StyleDefault
+	headerStyle := tcell.StyleDefault.Background(theme.HeaderActive).Foreground(theme.HeaderText).Bold(true)
+	selectedStyle := tcell.StyleDefault.Background(theme.SelectedActive).Foreground(theme.SelectedText)
+	normalStyle := tcell.StyleDefault.Foreground(theme.Foreground).Background(theme.Background)
 
 	// Draw header
 	fileName := filepath.Base(c.hashFilePath)
@@ -1857,7 +2049,7 @@ func (c *Commander) drawHashSelection() {
 	}
 
 	// Draw status bar
-	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	statusStyle := tcell.StyleDefault.Background(theme.StatusBarBackground).Foreground(theme.StatusBarText)
 	c.drawText(0, height-1, width, statusStyle, c.statusMsg)
 
 	c.screen.Show()
@@ -1866,11 +2058,12 @@ func (c *Commander) drawHashSelection() {
 func (c *Commander) drawArchiveSelection() {
 	c.screen.Clear()
 	width, height := c.screen.Size()
+	theme := c.getTheme()
 
 	// Header style
-	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
-	selectedStyle := tcell.StyleDefault.Background(tcell.ColorDarkCyan).Foreground(tcell.ColorWhite)
-	normalStyle := tcell.StyleDefault
+	headerStyle := tcell.StyleDefault.Background(theme.HeaderActive).Foreground(theme.HeaderText).Bold(true)
+	selectedStyle := tcell.StyleDefault.Background(theme.SelectedActive).Foreground(theme.SelectedText)
+	normalStyle := tcell.StyleDefault.Foreground(theme.Foreground).Background(theme.Background)
 
 	// Count selected files
 	pane := c.getActivePane()
@@ -1915,7 +2108,7 @@ func (c *Commander) drawArchiveSelection() {
 	}
 
 	// Draw status bar
-	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	statusStyle := tcell.StyleDefault.Background(theme.StatusBarBackground).Foreground(theme.StatusBarText)
 	c.drawText(0, height-1, width, statusStyle, c.statusMsg)
 
 	c.screen.Show()
@@ -1924,11 +2117,12 @@ func (c *Commander) drawArchiveSelection() {
 func (c *Commander) drawHashResult() {
 	c.screen.Clear()
 	width, height := c.screen.Size()
+	theme := c.getTheme()
 
 	// Header style
-	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
-	normalStyle := tcell.StyleDefault
-	highlightStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true)
+	headerStyle := tcell.StyleDefault.Background(theme.HeaderActive).Foreground(theme.HeaderText).Bold(true)
+	normalStyle := tcell.StyleDefault.Foreground(theme.Foreground).Background(theme.Background)
+	highlightStyle := tcell.StyleDefault.Foreground(theme.LineNumber).Bold(true)
 
 	// Draw header
 	title := fmt.Sprintf(" Hash Result - %s", c.hashAlgorithm)
@@ -1973,7 +2167,7 @@ func (c *Commander) drawHashResult() {
 	}
 
 	// Draw status bar
-	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	statusStyle := tcell.StyleDefault.Background(theme.StatusBarBackground).Foreground(theme.StatusBarText)
 	c.drawText(0, height-1, width, statusStyle, c.statusMsg)
 
 	c.screen.Show()
@@ -1982,10 +2176,11 @@ func (c *Commander) drawHashResult() {
 func (c *Commander) drawHelp() {
 	c.screen.Clear()
 	width, height := c.screen.Size()
+	theme := c.getTheme()
 
 	// Header style
-	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
-	normalStyle := tcell.StyleDefault
+	headerStyle := tcell.StyleDefault.Background(theme.HeaderActive).Foreground(theme.HeaderText).Bold(true)
+	normalStyle := tcell.StyleDefault.Foreground(theme.Foreground).Background(theme.Background)
 
 	// Draw header
 	title := " Terminal Commander - Help"
@@ -2025,6 +2220,9 @@ func (c *Commander) drawHelp() {
 		" Hash & Integrity:",
 		"  h/H                Integrity hash selection",
 		"",
+		" Display:",
+		"  t/T                Cycle color themes",
+		"",
 		" Other:",
 		"  ?                  Show this help",
 		"  Ctrl+Q             Quit",
@@ -2049,7 +2247,7 @@ func (c *Commander) drawHelp() {
 	}
 
 	// Draw status bar
-	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	statusStyle := tcell.StyleDefault.Background(theme.StatusBarBackground).Foreground(theme.StatusBarText)
 	statusMsg := "Press any key to close help"
 	c.drawText(0, height-1, width, statusStyle, statusMsg)
 
@@ -2059,12 +2257,13 @@ func (c *Commander) drawHelp() {
 func (c *Commander) drawEditor() {
 	c.screen.Clear()
 	width, height := c.screen.Size()
+	theme := c.getTheme()
 
 	// Header style
-	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
-	lineNumStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(tcell.ColorDarkGray)
-	textStyle := tcell.StyleDefault
-	cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
+	headerStyle := tcell.StyleDefault.Background(theme.HeaderActive).Foreground(theme.HeaderText).Bold(true)
+	lineNumStyle := tcell.StyleDefault.Foreground(theme.LineNumber).Background(theme.LineNumberBackground)
+	textStyle := tcell.StyleDefault.Foreground(theme.Foreground).Background(theme.Background)
+	cursorStyle := tcell.StyleDefault.Background(theme.SelectedActive).Foreground(theme.SelectedText)
 
 	// Draw header
 	title := c.editorFilePath
@@ -2128,7 +2327,8 @@ func (c *Commander) drawEditor() {
 
 func (c *Commander) drawEditorStatusBar(y int) {
 	width, _ := c.screen.Size()
-	style := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	theme := c.getTheme()
+	style := tcell.StyleDefault.Background(theme.StatusBarBackground).Foreground(theme.StatusBarText)
 
 	// Left side: status message
 	statusLeft := c.statusMsg
@@ -2313,10 +2513,12 @@ func (c *Commander) draw() {
 }
 
 func (c *Commander) drawPane(pane *Pane, offsetX int, active bool) {
-	style := tcell.StyleDefault
-	headerStyle := tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite)
+	theme := c.getTheme()
+	style := tcell.StyleDefault.Foreground(theme.Foreground).Background(theme.Background)
+	
+	headerStyle := tcell.StyleDefault.Background(theme.HeaderInactive).Foreground(theme.HeaderText)
 	if active {
-		headerStyle = headerStyle.Background(tcell.ColorBlue).Bold(true)
+		headerStyle = tcell.StyleDefault.Background(theme.HeaderActive).Foreground(theme.HeaderText).Bold(true)
 	}
 
 	// Draw path header
@@ -2337,7 +2539,7 @@ func (c *Commander) drawPane(pane *Pane, offsetX int, active bool) {
 	}
 
 	// Draw column header
-	colHeaderStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorWhite)
+	colHeaderStyle := tcell.StyleDefault.Background(theme.ColumnHeader).Foreground(theme.ColumnHeaderText)
 	colHeader := fmt.Sprintf(" %-*s %-*s %-*s %*s",
 		nameColWidth-1, "Name",
 		extColWidth, "Ext",
@@ -2359,9 +2561,9 @@ func (c *Commander) drawPane(pane *Pane, offsetX int, active bool) {
 		itemStyle := style
 		if i == pane.SelectedIdx {
 			if active {
-				itemStyle = tcell.StyleDefault.Background(tcell.ColorDarkCyan).Foreground(tcell.ColorWhite)
+				itemStyle = tcell.StyleDefault.Background(theme.SelectedActive).Foreground(theme.SelectedText)
 			} else {
-				itemStyle = tcell.StyleDefault.Background(tcell.ColorGray).Foreground(tcell.ColorWhite)
+				itemStyle = tcell.StyleDefault.Background(theme.SelectedInactive).Foreground(theme.SelectedText)
 			}
 		}
 
@@ -2373,20 +2575,20 @@ func (c *Commander) drawPane(pane *Pane, offsetX int, active bool) {
 				switch status.Status {
 				case "left_only":
 					compareIndicator = "[L] "
-					compareColor = tcell.ColorDarkCyan
+					compareColor = theme.CompareLeftOnly
 				case "right_only":
 					compareIndicator = "[R] "
-					compareColor = tcell.ColorDarkCyan
+					compareColor = theme.CompareRightOnly
 				case "different":
 					compareIndicator = "[D] "
-					compareColor = tcell.ColorYellow
+					compareColor = theme.CompareDifferent
 				case "identical":
 					compareIndicator = "[=] "
-					compareColor = tcell.ColorDarkGreen
+					compareColor = theme.CompareIdentical
 				}
 				// Override item style with comparison color if not selected
 				if i != pane.SelectedIdx {
-					itemStyle = tcell.StyleDefault.Foreground(compareColor)
+					itemStyle = tcell.StyleDefault.Foreground(compareColor).Background(theme.Background)
 				}
 			}
 		}
@@ -2452,15 +2654,16 @@ func (c *Commander) drawText(x, y, width int, style tcell.Style, text string) {
 
 func (c *Commander) drawStatusBar(y int) {
 	width, _ := c.screen.Size()
-	style := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
-	msgStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorWhite).Bold(true)
+	theme := c.getTheme()
+	style := tcell.StyleDefault.Background(theme.StatusBarBackground).Foreground(theme.StatusBarText)
+	msgStyle := tcell.StyleDefault.Background(theme.StatusBarBackground).Foreground(theme.StatusMsgText).Bold(true)
 
 	// Auto-reset status message after 10 seconds
 	if c.statusMsg != "" && time.Since(c.statusMsgTime) > 10*time.Second {
 		c.setStatus("")
 	}
 
-	shortcuts := "SPC:Select A:Archive C:Copy M:Move DEL:Del S:Search E:Edit G:Goto H:Hash N:New_Dir B:New_File R:Rename Y:Diff_Dir F:Diff_File Tab:Switch ESC:Quit"
+	shortcuts := "SPC:Select A:Archive C:Copy M:Move DEL:Del S:Search E:Edit G:Goto H:Hash N:New_Dir B:New_File R:Rename Y:Diff_Dir F:Diff_File T:Theme Tab:Switch ESC:Quit"
 
 	// Calculate available space for status message
 	statusMsg := c.statusMsg
@@ -2781,14 +2984,15 @@ func (c *Commander) calculateDiff() {
 func (c *Commander) drawDiff() {
 	c.screen.Clear()
 	width, height := c.screen.Size()
+	theme := c.getTheme()
 
 	// Styles
-	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
-	normalStyle := tcell.StyleDefault
-	deleteStyle := tcell.StyleDefault.Background(tcell.ColorDarkRed).Foreground(tcell.ColorWhite)
-	addStyle := tcell.StyleDefault.Background(tcell.ColorDarkGreen).Foreground(tcell.ColorWhite)
-	modifyStyle := tcell.StyleDefault.Background(tcell.ColorDarkGoldenrod).Foreground(tcell.ColorWhite)
-	lineNumStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(tcell.ColorDarkGray)
+	headerStyle := tcell.StyleDefault.Background(theme.HeaderActive).Foreground(theme.HeaderText).Bold(true)
+	normalStyle := tcell.StyleDefault.Foreground(theme.Foreground).Background(theme.Background)
+	deleteStyle := tcell.StyleDefault.Background(theme.DiffDelete).Foreground(theme.SelectedText)
+	addStyle := tcell.StyleDefault.Background(theme.DiffAdd).Foreground(theme.SelectedText)
+	modifyStyle := tcell.StyleDefault.Background(theme.DiffModify).Foreground(theme.SelectedText)
+	lineNumStyle := tcell.StyleDefault.Foreground(theme.LineNumber).Background(theme.LineNumberBackground)
 
 	// Calculate pane widths
 	halfWidth := (width - 1) / 2
@@ -2815,7 +3019,7 @@ func (c *Commander) drawDiff() {
 
 	// Draw separator
 	for y := 0; y < height-1; y++ {
-		c.screen.SetContent(halfWidth, y, '│', nil, tcell.StyleDefault)
+		c.screen.SetContent(halfWidth, y, '│', nil, normalStyle)
 	}
 
 	// Draw file contents
@@ -2901,7 +3105,7 @@ func (c *Commander) drawDiff() {
 	}
 
 	// Draw status bar
-	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	statusStyle := tcell.StyleDefault.Background(theme.StatusBarBackground).Foreground(theme.StatusBarText)
 	statusText := c.statusMsg
 	if statusText == "" {
 		diffCount := 0
