@@ -23,40 +23,41 @@ See [QUICKSTART.md](QUICKSTART.md) for a complete tutorial.
 - **Dual-Pane Interface**: Navigate two directories simultaneously with column view (Name, Extension, Modified Date, Size)
 - **Keyboard Navigation**: Arrow keys for file selection, TAB to switch between panes
 - **File Operations**:
-  - Copy files/directories (F5 or Ctrl+C)
-  - Move files/directories (F6 or Ctrl+X)
-  - Delete files/directories (F8 or Ctrl+D)
-  - Rename files (Ctrl+R)
-  - Create directories (Ctrl+N)
+  - Copy files/directories (c/C)
+  - Move files/directories (m/M)
+  - Delete files/directories (Delete)
+  - Rename files (r/R)
+  - Create blank files (b/B)
+  - Create directories (n/N)
 - **Multi-File Selection** (Spacebar):
   - Toggle selection on individual files/folders with spacebar
   - Visual indicator `[*]` shows selected items
   - Selection persists while navigating
   - Perform operations on multiple selected items
-- **Archive Compression** (Ctrl+A):
+- **Archive Compression** (a/A):
   - Create archives from selected files or current item
   - Support for multiple formats: .zip, .7z, .tar, .tar.gz, .tar.bz2, .tar.xz
   - Automatic format detection based on available system tools
   - Smart archive naming (single item uses item name, multiple items use timestamp)
   - Progress indication and error handling
-- **Built-in Text Editor** (Ctrl+E):
+- **Built-in Text Editor** (e/E):
   - Line numbers displayed
   - Full cursor navigation (arrows, Home, End, PgUp, PgDn)
   - Insert, delete, and edit text
   - Save with Ctrl+S, exit with Ctrl+Q/ESC
   - Unsaved changes warning
-- **Recursive File Search** (Ctrl+F):
+- **Recursive File Search** (s/S):
   - Searches all subdirectories
   - Displays results in a dedicated pane with Type, Name, and Location columns
   - Navigate results and jump directly to the containing folder
-- **Go to Folder** (Ctrl+G): Manually enter a path to navigate to (supports `~` for home directory)
-- **File Hash Verification** (Ctrl+H):
+- **Go to Folder** (g/G): Manually enter a path to navigate to (supports `~` for home directory)
+- **File Hash Verification** (h/H):
   - Generate cryptographic hashes for file verification and integrity checking
   - Support for 10 hash algorithms: MD5, SHA-1, SHA-256, SHA-512, SHA3-256, SHA3-512, BLAKE2b-256, BLAKE2s-256, BLAKE3, RIPEMD-160
   - Interactive algorithm selection with arrow key navigation
   - Hash results displayed in hexadecimal format
   - Progress indication for large files
-- **File Diff Engine** (F3):
+- **File Diff Engine** (f/F):
   - Side-by-side comparison of files from left and right panes
   - Color-coded difference highlighting:
     - Red: Lines only in left file (deleted)
@@ -69,7 +70,7 @@ See [QUICKSTART.md](QUICKSTART.md) for a complete tutorial.
   - Line numbers displayed for both files
   - Synchronized scrolling
   - Unsaved changes warning on exit
-- **Folder Comparison and Synchronization** (Ctrl+Y):
+- **Folder Comparison and Synchronization** (y/Y):
   - Compare files between left and right panes (non-recursive)
   - Visual indicators: [L] left-only, [R] right-only, [D] different, [=] identical
   - Color-coded display: cyan for one-sided, yellow for different, green for identical
@@ -77,6 +78,7 @@ See [QUICKSTART.md](QUICKSTART.md) for a complete tutorial.
   - Sync operations: left→right (>), right→left (<), both ways (=)
   - Automatic re-comparison after sync
   - Statistics display showing total files, left-only, right-only, different, and identical counts
+- **Help System** (?): Comprehensive help pane showing all keyboard shortcuts and functions
 - **Visual Indicators**: 
   - Directories shown in brackets [dirname]
   - Selected items marked with `[*]` prefix
@@ -160,25 +162,27 @@ terminalcommander.exe
 | Backspace | Go to parent directory |
 | Spacebar | Toggle selection of current item |
 | Tab | Switch between left and right pane |
-| F5 / Ctrl+C | Copy selected file/directory to other pane |
-| F6 / Ctrl+X | Move selected file/directory to other pane |
-| F8 / Ctrl+D / Delete | Delete selected file/directory |
-| Ctrl+A | Create archive from selected items (show format selection) |
-| Ctrl+R | Rename file/directory |
-| Ctrl+E | Edit file with built-in editor |
-| Ctrl+F | Recursive search for files |
-| Ctrl+G | Go to folder (enter path manually) |
-| Ctrl+H | Generate file hash (select algorithm) |
-| Ctrl+N | Create new directory |
-| F3 | Compare files (diff mode) |
-| Ctrl+Y | Toggle folder comparison mode |
+| c/C | Copy selected file/directory to other pane |
+| m/M | Move selected file/directory to other pane |
+| Delete | Delete selected file/directory |
+| a/A | Create archive from selected items (show format selection) |
+| r/R | Rename file/directory |
+| e/E | Edit file with built-in editor |
+| s/S | Recursive search for files |
+| g/G | Go to folder (enter path manually) |
+| h/H | Generate file hash (select algorithm) |
+| n/N | Create new directory |
+| b/B | Create new blank file |
+| f/F | Compare files (diff mode) |
+| y/Y | Toggle folder comparison mode |
+| ? | Show help |
 | Ctrl+Q / ESC | Quit application |
 
 #### Folder Comparison Mode
 
 | Key | Action |
 |-----|--------|
-| Ctrl+Y | Toggle comparison mode |
+| y/Y | Toggle comparison mode |
 | > | Sync selected file(s) from left to right |
 | < | Sync selected file(s) from right to left |
 | = | Sync both ways (copy unique files from each side) |
@@ -202,7 +206,7 @@ terminalcommander.exe
 | < | Copy current difference from right to left |
 | e | Enter edit mode for manual editing |
 | Ctrl+S | Save modified files |
-| F3 / ESC | Exit diff mode |
+| f/F / ESC | Exit diff mode |
 
 #### Built-in Editor
 
@@ -252,6 +256,13 @@ terminalcommander.exe
 | Home / End | Jump to first/last format |
 | Enter | Create archive with selected format |
 | ESC | Cancel archive operation |
+
+#### Help System
+
+| Key | Action |
+|-----|--------|
+| ? | Show comprehensive help pane |
+| Any Key | Close help and return to file browser |
 
 ## Cross-Platform Compatibility
 

@@ -117,13 +117,15 @@ type Commander struct {
 	diffCurrentIdx    int // Current difference being viewed
 	diffDifferences   []DiffBlock
 	diffScrollY       int
-	diffActiveSide    int  // 0 for left, 1 for right
+	diffActiveSide    int // 0 for left, 1 for right
 	diffEditMode      bool
 	diffCursorX       int
 	diffCursorY       int
 	// Compare mode state
 	compareMode    bool
 	compareResults map[string]CompareStatus
+	// Help mode state
+	helpMode bool
 }
 
 type CompareStatus struct {
@@ -224,6 +226,11 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 		return c.handleHashResultKey(ev)
 	}
 
+	if c.helpMode {
+		c.helpMode = false
+		return false
+	}
+
 	if c.inputMode != "" {
 		return c.handleInputKey(ev)
 	}
@@ -251,17 +258,13 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 	case tcell.KeyDown:
 		c.moveSelection(1)
 	case tcell.KeyEnter:
-		// Exit compare mode when entering directory
-		if c.compareMode {
-			c.exitCompareMode()
+		if !c.compareMode {
+			c.enterDirectory()
 		}
-		c.enterDirectory()
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
-		// Exit compare mode when going to parent
-		if c.compareMode {
-			c.exitCompareMode()
+		if !c.compareMode {
+			c.goToParent()
 		}
-		c.goToParent()
 	case tcell.KeyRune:
 		// Handle spacebar for selection toggle
 		if ev.Rune() == ' ' {
@@ -282,41 +285,81 @@ func (c *Commander) handleKeyEvent(ev *tcell.EventKey) bool {
 				return false
 			}
 		}
-	case tcell.KeyCtrlY:
-		// Toggle compare mode
-		if c.compareMode {
-			c.exitCompareMode()
-		} else {
-			c.enterCompareMode()
+		// Handle 'h' or 'H' for integrity hash
+		if ev.Rune() == 'h' || ev.Rune() == 'H' {
+			c.startHashSelection()
+			return false
 		}
-	case tcell.KeyCtrlF:
-		c.startSearch()
-	case tcell.KeyCtrlC:
-		c.copyFile()
-	case tcell.KeyCtrlX:
-		c.moveFile()
-	case tcell.KeyCtrlD, tcell.KeyDelete:
+		// Handle 'a' or 'A' for archive
+		if ev.Rune() == 'a' || ev.Rune() == 'A' {
+			c.startArchiveSelection()
+			return false
+		}
+
+		// Handle 'b' or 'B' for blank file
+		if ev.Rune() == 'b' || ev.Rune() == 'B' {
+			c.createBlankFile()
+			return false
+		}
+
+		// Handle 'c' or 'C' for copy
+		if ev.Rune() == 'c' || ev.Rune() == 'C' {
+			c.copyFile()
+		}
+
+		// Handle 'm' or 'M' for move
+		if ev.Rune() == 'm' || ev.Rune() == 'M' {
+			c.moveFile()
+		}
+
+		// Handle 'r' or 'R' for rename
+		if ev.Rune() == 'r' || ev.Rune() == 'R' {
+			c.renameFile()
+		}
+
+		// Handle 'n' or 'N' for new directory
+		if ev.Rune() == 'n' || ev.Rune() == 'N' {
+			c.createDirectory()
+		}
+
+		// Handle 'e' or 'E' for edit
+		if ev.Rune() == 'e' || ev.Rune() == 'E' {
+			c.editFile()
+		}
+
+		// Handle 'g' or 'G' for goto
+		if ev.Rune() == 'g' || ev.Rune() == 'G' {
+			c.gotoFolder()
+		}
+
+		// Handle 's' or 'S' for find
+		if ev.Rune() == 's' || ev.Rune() == 'S' {
+			c.startSearch()
+		}
+
+		// Handle 'y' or 'Y' for find
+		if ev.Rune() == 'y' || ev.Rune() == 'Y' {
+			// Toggle compare mode
+			if c.compareMode {
+				c.exitCompareMode()
+			} else {
+				c.enterCompareMode()
+			}
+		}
+
+		// Handle 'f' or 'F' for find
+		if ev.Rune() == 'f' || ev.Rune() == 'F' {
+			c.enterDiffMode()
+		}
+
+		// Handle '?' for help
+		if ev.Rune() == '?' {
+			c.helpMode = true
+			return false
+		}
+	case tcell.KeyDelete:
 		c.deleteFile()
-	case tcell.KeyCtrlR:
-		c.renameFile()
-	case tcell.KeyCtrlE:
-		c.editFile()
-	case tcell.KeyF5:
-		c.copyFile()
-	case tcell.KeyF6:
-		c.moveFile()
-	case tcell.KeyF8:
-		c.deleteFile()
-	case tcell.KeyCtrlN:
-		c.createDirectory()
-	case tcell.KeyCtrlG:
-		c.gotoFolder()
-	case tcell.KeyCtrlH:
-		c.startHashSelection()
-	case tcell.KeyCtrlA:
-		c.startArchiveSelection()
-	case tcell.KeyF3:
-		c.enterDiffMode()
+
 	}
 
 	return false
@@ -416,6 +459,23 @@ func (c *Commander) processInput() {
 			c.setStatus("Error creating directory: " + err.Error())
 		} else {
 			c.setStatus("Created directory: " + c.inputBuffer)
+			c.refreshPane(pane)
+		}
+
+	case "newfile":
+		if len(c.inputBuffer) == 0 {
+			c.setStatus("File name cannot be empty")
+			c.inputMode = ""
+			c.inputBuffer = ""
+			return
+		}
+
+		newPath := filepath.Join(pane.CurrentPath, c.inputBuffer)
+		err := os.WriteFile(newPath, []byte{}, 0644)
+		if err != nil {
+			c.setStatus("Error creating file: " + err.Error())
+		} else {
+			c.setStatus("Created file: " + c.inputBuffer)
 			c.refreshPane(pane)
 		}
 
@@ -1189,7 +1249,7 @@ func (c *Commander) create7zArchive(archivePath string, files []FileItem) error 
 	// Try different 7z command names
 	cmdNames := []string{"7z", "7za"}
 	var lastErr error
-	
+
 	for _, cmdName := range cmdNames {
 		cmd := exec.Command(cmdName, args...)
 		cmd.Dir = pane.CurrentPath
@@ -1888,7 +1948,7 @@ func (c *Commander) drawHashResult() {
 	// Draw hash result (wrapped if needed)
 	hashLabel := "  Hash:"
 	c.drawText(0, 4, width, normalStyle, hashLabel)
-	
+
 	// Draw hash value with wrapping for long hashes
 	hashValue := c.hashResult
 	currentY := 5
@@ -1915,6 +1975,83 @@ func (c *Commander) drawHashResult() {
 	// Draw status bar
 	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
 	c.drawText(0, height-1, width, statusStyle, c.statusMsg)
+
+	c.screen.Show()
+}
+
+func (c *Commander) drawHelp() {
+	c.screen.Clear()
+	width, height := c.screen.Size()
+
+	// Header style
+	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
+	normalStyle := tcell.StyleDefault
+
+	// Draw header
+	title := " Terminal Commander - Help"
+	c.drawText(0, 0, width, headerStyle, title)
+
+	// Help content
+	helpLines := []string{
+		"",
+		" Navigation:",
+		"  Arrow Keys         Navigate files/directories",
+		"  Tab                Switch between panes",
+		"  Enter              Enter directory",
+		"  Backspace          Go to parent directory",
+		"",
+		" File Operations:",
+		"  r/R                Rename file/directory",
+		"  e/E                Edit file",
+		"  c/C                Copy file/directory",
+		"  m/M                Move file/directory",
+		"  Delete             Delete file/directory",
+		"  b/B                Create blank file",
+		"",
+		" Directory Operations:",
+		"  n/N                Create new directory",
+		"  g/G                Go to folder",
+		"",
+		" Selection & Archive:",
+		"  Space              Toggle selection",
+		"  a/A                Archive selected files",
+		"  Ctrl+A             Archive selection mode",
+		"",
+		" Search & Compare:",
+		"  s/S                Search files",
+		"  f/F                Diff mode",
+		"  y/Y                Toggle compare mode",
+		"",
+		" Hash & Integrity:",
+		"  h/H                Integrity hash selection",
+		"",
+		" Other:",
+		"  ?                  Show this help",
+		"  Ctrl+Q             Quit",
+		"",
+		" Compare Mode:",
+		"  >                  Sync left to right",
+		"  <                  Sync right to left",
+		"  =                  Sync both ways",
+		"",
+		" Input Mode:",
+		"  Enter              Confirm",
+		"  Escape             Cancel",
+	}
+
+	y := 2
+	for _, line := range helpLines {
+		if y >= height-2 {
+			break
+		}
+		c.drawText(0, y, width, normalStyle, line)
+		y++
+	}
+
+	// Draw status bar
+	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
+	statusMsg := "Press any key to close help"
+	c.drawText(0, height-1, width, statusStyle, statusMsg)
 
 	c.screen.Show()
 }
@@ -2019,6 +2156,13 @@ func (c *Commander) createDirectory() {
 	c.inputMode = "newdir"
 	c.inputBuffer = ""
 	c.inputPrompt = "New directory name: "
+	c.setStatus(c.inputPrompt + c.inputBuffer)
+}
+
+func (c *Commander) createBlankFile() {
+	c.inputMode = "newfile"
+	c.inputBuffer = ""
+	c.inputPrompt = "New file name: "
 	c.setStatus(c.inputPrompt + c.inputBuffer)
 }
 
@@ -2138,6 +2282,12 @@ func (c *Commander) draw() {
 	// Check if in hash result mode
 	if c.hashResultMode {
 		c.drawHashResult()
+		return
+	}
+
+	// Check if in help mode
+	if c.helpMode {
+		c.drawHelp()
 		return
 	}
 
@@ -2310,7 +2460,7 @@ func (c *Commander) drawStatusBar(y int) {
 		c.setStatus("")
 	}
 
-	shortcuts := "SPC:Select ^A:Archive ^C:Copy ^X:Move DEL:Del ^F:Find ^E:Edit ^G:Goto ^H:Hash ^N:New ^R:Rename ^Y:Compare Tab:Switch ESC:Quit"
+	shortcuts := "SPC:Select A:Archive C:Copy M:Move DEL:Del S:Search E:Edit G:Goto H:Hash N:New_Dir B:New_File R:Rename Y:Diff_Dir F:Diff_File Tab:Switch ESC:Quit"
 
 	// Calculate available space for status message
 	statusMsg := c.statusMsg
@@ -2472,7 +2622,7 @@ func (c *Commander) enterDiffMode() {
 	// Split into lines
 	c.diffLeftLines = strings.Split(string(leftContent), "\n")
 	c.diffRightLines = strings.Split(string(rightContent), "\n")
-	
+
 	// Remove trailing empty line if file ends with newline
 	if len(c.diffLeftLines) > 0 && c.diffLeftLines[len(c.diffLeftLines)-1] == "" {
 		c.diffLeftLines = c.diffLeftLines[:len(c.diffLeftLines)-1]
@@ -2480,7 +2630,7 @@ func (c *Commander) enterDiffMode() {
 	if len(c.diffRightLines) > 0 && c.diffRightLines[len(c.diffRightLines)-1] == "" {
 		c.diffRightLines = c.diffRightLines[:len(c.diffRightLines)-1]
 	}
-	
+
 	// Ensure at least one line
 	if len(c.diffLeftLines) == 0 {
 		c.diffLeftLines = []string{""}
@@ -2504,7 +2654,7 @@ func (c *Commander) enterDiffMode() {
 	c.calculateDiff()
 
 	c.diffMode = true
-	c.setStatus("Diff mode: F3/ESC:Exit n:Next p:Prev >:Copy→ <:Copy← e:Edit Ctrl+S:Save")
+	c.setStatus("Diff mode: f/F/ESC:Exit n:Next p:Prev >:Copy→ <:Copy← e:Edit Ctrl+S:Save")
 }
 
 // isTextFile checks if content appears to be text
@@ -2521,15 +2671,15 @@ func isTextFile(content []byte) bool {
 // calculateDiff computes differences between left and right files
 func (c *Commander) calculateDiff() {
 	c.diffDifferences = []DiffBlock{}
-	
+
 	leftLen := len(c.diffLeftLines)
 	rightLen := len(c.diffRightLines)
-	
+
 	// Simple line-by-line comparison algorithm
 	// This is a basic implementation; Myers diff would be more sophisticated
 	leftIdx := 0
 	rightIdx := 0
-	
+
 	for leftIdx < leftLen || rightIdx < rightLen {
 		// Check if lines match
 		if leftIdx < leftLen && rightIdx < rightLen && c.diffLeftLines[leftIdx] == c.diffRightLines[rightIdx] {
@@ -2550,7 +2700,7 @@ func (c *Commander) calculateDiff() {
 			// Different block - find the extent
 			diffLeftStart := leftIdx
 			diffRightStart := rightIdx
-			
+
 			// Advance through differences until we find a match or reach end
 			foundMatch := false
 			for !foundMatch && (leftIdx < leftLen || rightIdx < rightLen) {
@@ -2561,7 +2711,7 @@ func (c *Commander) calculateDiff() {
 						foundMatch = true
 						break
 					}
-					
+
 					// Look ahead a few lines to find sync point
 					matchFound := false
 					for lookAhead := 1; lookAhead <= 3 && !matchFound; lookAhead++ {
@@ -2578,7 +2728,7 @@ func (c *Commander) calculateDiff() {
 							break
 						}
 					}
-					
+
 					if !matchFound {
 						// No match found nearby, advance both
 						leftIdx++
@@ -2590,7 +2740,7 @@ func (c *Commander) calculateDiff() {
 					rightIdx++
 				}
 			}
-			
+
 			// Determine type of difference
 			diffType := "modify"
 			if diffLeftStart >= leftLen {
@@ -2602,7 +2752,7 @@ func (c *Commander) calculateDiff() {
 			} else if rightIdx-diffRightStart == 0 {
 				diffType = "delete"
 			}
-			
+
 			if diffLeftStart < leftIdx || diffRightStart < rightIdx {
 				c.diffDifferences = append(c.diffDifferences, DiffBlock{
 					LeftStart:  diffLeftStart,
@@ -2614,7 +2764,7 @@ func (c *Commander) calculateDiff() {
 			}
 		}
 	}
-	
+
 	// If no differences found, add one equal block for the whole file
 	if len(c.diffDifferences) == 0 {
 		c.diffDifferences = append(c.diffDifferences, DiffBlock{
@@ -2631,7 +2781,7 @@ func (c *Commander) calculateDiff() {
 func (c *Commander) drawDiff() {
 	c.screen.Clear()
 	width, height := c.screen.Size()
-	
+
 	// Styles
 	headerStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite).Bold(true)
 	normalStyle := tcell.StyleDefault
@@ -2639,11 +2789,11 @@ func (c *Commander) drawDiff() {
 	addStyle := tcell.StyleDefault.Background(tcell.ColorDarkGreen).Foreground(tcell.ColorWhite)
 	modifyStyle := tcell.StyleDefault.Background(tcell.ColorDarkGoldenrod).Foreground(tcell.ColorWhite)
 	lineNumStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(tcell.ColorDarkGray)
-	
+
 	// Calculate pane widths
 	halfWidth := (width - 1) / 2
 	lineNumWidth := 5
-	
+
 	// Draw headers
 	leftHeader := " Left: " + filepath.Base(c.diffLeftPath)
 	if c.diffLeftModified {
@@ -2653,7 +2803,7 @@ func (c *Commander) drawDiff() {
 		leftHeader = leftHeader[:halfWidth-3] + "..."
 	}
 	c.drawText(0, 0, halfWidth, headerStyle, leftHeader)
-	
+
 	rightHeader := " Right: " + filepath.Base(c.diffRightPath)
 	if c.diffRightModified {
 		rightHeader += " [modified]"
@@ -2662,31 +2812,31 @@ func (c *Commander) drawDiff() {
 		rightHeader = rightHeader[:halfWidth-3] + "..."
 	}
 	c.drawText(halfWidth+1, 0, halfWidth, headerStyle, rightHeader)
-	
+
 	// Draw separator
 	for y := 0; y < height-1; y++ {
 		c.screen.SetContent(halfWidth, y, '│', nil, tcell.StyleDefault)
 	}
-	
+
 	// Draw file contents
 	visibleHeight := height - 2 // Leave room for header and status
 	maxLines := len(c.diffLeftLines)
 	if len(c.diffRightLines) > maxLines {
 		maxLines = len(c.diffRightLines)
 	}
-	
+
 	for y := 0; y < visibleHeight; y++ {
 		lineIdx := c.diffScrollY + y
 		screenY := y + 1
-		
+
 		if lineIdx >= maxLines {
 			break
 		}
-		
+
 		// Determine line style based on differences
 		leftStyle := normalStyle
 		rightStyle := normalStyle
-		
+
 		for _, diff := range c.diffDifferences {
 			if lineIdx >= diff.LeftStart && lineIdx <= diff.LeftEnd {
 				if diff.Type == "delete" {
@@ -2703,7 +2853,7 @@ func (c *Commander) drawDiff() {
 				}
 			}
 		}
-		
+
 		// Draw left side
 		leftLineNum := ""
 		leftContent := ""
@@ -2711,12 +2861,12 @@ func (c *Commander) drawDiff() {
 			leftLineNum = fmt.Sprintf("%4d ", lineIdx+1)
 			leftContent = c.diffLeftLines[lineIdx]
 		}
-		
+
 		// Draw left line number
 		for i, ch := range leftLineNum {
 			c.screen.SetContent(i, screenY, ch, nil, lineNumStyle)
 		}
-		
+
 		// Draw left content
 		maxContentWidth := halfWidth - lineNumWidth
 		for x := 0; x < maxContentWidth; x++ {
@@ -2726,7 +2876,7 @@ func (c *Commander) drawDiff() {
 			}
 			c.screen.SetContent(lineNumWidth+x, screenY, ch, nil, leftStyle)
 		}
-		
+
 		// Draw right side
 		rightLineNum := ""
 		rightContent := ""
@@ -2734,12 +2884,12 @@ func (c *Commander) drawDiff() {
 			rightLineNum = fmt.Sprintf("%4d ", lineIdx+1)
 			rightContent = c.diffRightLines[lineIdx]
 		}
-		
+
 		// Draw right line number
 		for i, ch := range rightLineNum {
 			c.screen.SetContent(halfWidth+1+i, screenY, ch, nil, lineNumStyle)
 		}
-		
+
 		// Draw right content
 		for x := 0; x < maxContentWidth; x++ {
 			var ch rune = ' '
@@ -2749,7 +2899,7 @@ func (c *Commander) drawDiff() {
 			c.screen.SetContent(halfWidth+1+lineNumWidth+x, screenY, ch, nil, rightStyle)
 		}
 	}
-	
+
 	// Draw status bar
 	statusStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorBlack)
 	statusText := c.statusMsg
@@ -2760,13 +2910,13 @@ func (c *Commander) drawDiff() {
 				diffCount++
 			}
 		}
-		statusText = fmt.Sprintf("F3/ESC:Exit n:Next p:Prev >:Copy→ <:Copy← e:Edit Ctrl+S:Save | %d differences", diffCount)
+		statusText = fmt.Sprintf("f/F/ESC:Exit n:Next p:Prev >:Copy→ <:Copy← e:Edit Ctrl+S:Save | %d differences", diffCount)
 	}
 	if len(statusText) > width {
 		statusText = statusText[:width]
 	}
 	c.drawText(0, height-1, width, statusStyle, statusText)
-	
+
 	c.screen.Show()
 }
 
@@ -2776,9 +2926,9 @@ func (c *Commander) handleDiffInput(ev *tcell.EventKey) bool {
 	if c.diffEditMode {
 		return c.handleDiffEditKey(ev)
 	}
-	
+
 	switch ev.Key() {
-	case tcell.KeyEscape, tcell.KeyF3:
+	case tcell.KeyEscape:
 		return c.exitDiffMode()
 	case tcell.KeyCtrlQ:
 		return c.exitDiffMode()
@@ -2831,7 +2981,7 @@ func (c *Commander) handleDiffInput(ev *tcell.EventKey) bool {
 	case tcell.KeyCtrlS:
 		c.saveDiffFiles()
 	}
-	
+
 	return false
 }
 
@@ -2969,7 +3119,7 @@ func (c *Commander) handleDiffEditKey(ev *tcell.EventKey) bool {
 			c.diffRightModified = true
 		}
 	}
-	
+
 	return false
 }
 
@@ -2978,7 +3128,7 @@ func (c *Commander) jumpToNextDiff() {
 	if len(c.diffDifferences) == 0 {
 		return
 	}
-	
+
 	// Find next non-equal diff
 	for i := c.diffCurrentIdx + 1; i < len(c.diffDifferences); i++ {
 		if c.diffDifferences[i].Type != "equal" {
@@ -2988,7 +3138,7 @@ func (c *Commander) jumpToNextDiff() {
 			return
 		}
 	}
-	
+
 	// Wrap around to first diff
 	for i := 0; i <= c.diffCurrentIdx; i++ {
 		if c.diffDifferences[i].Type != "equal" {
@@ -2998,7 +3148,7 @@ func (c *Commander) jumpToNextDiff() {
 			return
 		}
 	}
-	
+
 	c.setStatus("No differences found")
 }
 
@@ -3007,7 +3157,7 @@ func (c *Commander) jumpToPrevDiff() {
 	if len(c.diffDifferences) == 0 {
 		return
 	}
-	
+
 	// Find previous non-equal diff
 	for i := c.diffCurrentIdx - 1; i >= 0; i-- {
 		if c.diffDifferences[i].Type != "equal" {
@@ -3017,7 +3167,7 @@ func (c *Commander) jumpToPrevDiff() {
 			return
 		}
 	}
-	
+
 	// Wrap around to last diff
 	for i := len(c.diffDifferences) - 1; i >= c.diffCurrentIdx; i-- {
 		if c.diffDifferences[i].Type != "equal" {
@@ -3027,7 +3177,7 @@ func (c *Commander) jumpToPrevDiff() {
 			return
 		}
 	}
-	
+
 	c.setStatus("No differences found")
 }
 
@@ -3037,20 +3187,20 @@ func (c *Commander) copyDiffLeftToRight() {
 		c.setStatus("No difference selected")
 		return
 	}
-	
+
 	diff := c.diffDifferences[c.diffCurrentIdx]
 	if diff.Type == "equal" {
 		c.setStatus("No difference at current position")
 		return
 	}
-	
+
 	// Extract lines from left
 	var leftLines []string
 	if diff.LeftStart <= diff.LeftEnd && diff.LeftEnd < len(c.diffLeftLines) {
 		leftLines = make([]string, diff.LeftEnd-diff.LeftStart+1)
 		copy(leftLines, c.diffLeftLines[diff.LeftStart:diff.LeftEnd+1])
 	}
-	
+
 	// Replace in right
 	newRight := []string{}
 	newRight = append(newRight, c.diffRightLines[:diff.RightStart]...)
@@ -3058,7 +3208,7 @@ func (c *Commander) copyDiffLeftToRight() {
 	if diff.RightEnd+1 < len(c.diffRightLines) {
 		newRight = append(newRight, c.diffRightLines[diff.RightEnd+1:]...)
 	}
-	
+
 	c.diffRightLines = newRight
 	c.diffRightModified = true
 	c.calculateDiff()
@@ -3071,20 +3221,20 @@ func (c *Commander) copyDiffRightToLeft() {
 		c.setStatus("No difference selected")
 		return
 	}
-	
+
 	diff := c.diffDifferences[c.diffCurrentIdx]
 	if diff.Type == "equal" {
 		c.setStatus("No difference at current position")
 		return
 	}
-	
+
 	// Extract lines from right
 	var rightLines []string
 	if diff.RightStart <= diff.RightEnd && diff.RightEnd < len(c.diffRightLines) {
 		rightLines = make([]string, diff.RightEnd-diff.RightStart+1)
 		copy(rightLines, c.diffRightLines[diff.RightStart:diff.RightEnd+1])
 	}
-	
+
 	// Replace in left
 	newLeft := []string{}
 	newLeft = append(newLeft, c.diffLeftLines[:diff.LeftStart]...)
@@ -3092,7 +3242,7 @@ func (c *Commander) copyDiffRightToLeft() {
 	if diff.LeftEnd+1 < len(c.diffLeftLines) {
 		newLeft = append(newLeft, c.diffLeftLines[diff.LeftEnd+1:]...)
 	}
-	
+
 	c.diffLeftLines = newLeft
 	c.diffLeftModified = true
 	c.calculateDiff()
@@ -3120,7 +3270,7 @@ func (c *Commander) enterDiffEditMode() {
 // saveDiffFiles saves modified files
 func (c *Commander) saveDiffFiles() {
 	savedCount := 0
-	
+
 	if c.diffLeftModified {
 		content := strings.Join(c.diffLeftLines, "\n") + "\n"
 		err := os.WriteFile(c.diffLeftPath, []byte(content), 0644)
@@ -3131,7 +3281,7 @@ func (c *Commander) saveDiffFiles() {
 		c.diffLeftModified = false
 		savedCount++
 	}
-	
+
 	if c.diffRightModified {
 		content := strings.Join(c.diffRightLines, "\n") + "\n"
 		err := os.WriteFile(c.diffRightPath, []byte(content), 0644)
@@ -3142,7 +3292,7 @@ func (c *Commander) saveDiffFiles() {
 		c.diffRightModified = false
 		savedCount++
 	}
-	
+
 	if savedCount == 0 {
 		c.setStatus("No changes to save")
 	} else if savedCount == 1 {
@@ -3173,7 +3323,7 @@ func (c *Commander) exitDiffMode() bool {
 		c.diffRightModified = false
 		return false
 	}
-	
+
 	// No unsaved changes, exit immediately
 	c.diffMode = false
 	c.diffLeftLines = nil
@@ -3189,7 +3339,7 @@ func (c *Commander) exitDiffMode() bool {
 func (c *Commander) enterCompareMode() {
 	// Initialize compare results map
 	c.compareResults = make(map[string]CompareStatus)
-	
+
 	// Get files from both panes (excluding "..")
 	leftFiles := make(map[string]*FileItem)
 	for i := range c.leftPane.Files {
@@ -3197,20 +3347,20 @@ func (c *Commander) enterCompareMode() {
 			leftFiles[c.leftPane.Files[i].Name] = &c.leftPane.Files[i]
 		}
 	}
-	
+
 	rightFiles := make(map[string]*FileItem)
 	for i := range c.rightPane.Files {
 		if c.rightPane.Files[i].Name != ".." {
 			rightFiles[c.rightPane.Files[i].Name] = &c.rightPane.Files[i]
 		}
 	}
-	
+
 	// Compare files
 	leftOnly := 0
 	rightOnly := 0
 	different := 0
 	identical := 0
-	
+
 	// Check files in left pane
 	for name, leftFile := range leftFiles {
 		if rightFile, exists := rightFiles[name]; exists {
@@ -3258,7 +3408,7 @@ func (c *Commander) enterCompareMode() {
 			leftOnly++
 		}
 	}
-	
+
 	// Check files in right pane that don't exist in left
 	for name, rightFile := range rightFiles {
 		if _, exists := leftFiles[name]; !exists {
@@ -3269,10 +3419,10 @@ func (c *Commander) enterCompareMode() {
 			rightOnly++
 		}
 	}
-	
+
 	// Set compare mode flag
 	c.compareMode = true
-	
+
 	// Display statistics
 	totalFiles := len(c.compareResults)
 	c.setStatus(fmt.Sprintf("Compare: %d files | Left only: %d | Right only: %d | Different: %d | Identical: %d",
@@ -3294,7 +3444,7 @@ func (c *Commander) syncLeftToRight() {
 		c.setStatus("Not in compare mode")
 		return
 	}
-	
+
 	// Collect files to sync
 	var filesToSync []FileItem
 	for i := range c.leftPane.Files {
@@ -3311,7 +3461,7 @@ func (c *Commander) syncLeftToRight() {
 			}
 		}
 	}
-	
+
 	// If nothing selected, use current file
 	if len(filesToSync) == 0 && c.activePane == PaneLeft && len(c.leftPane.Files) > 0 {
 		file := c.leftPane.Files[c.leftPane.SelectedIdx]
@@ -3323,12 +3473,12 @@ func (c *Commander) syncLeftToRight() {
 			}
 		}
 	}
-	
+
 	if len(filesToSync) == 0 {
 		c.setStatus("No files to sync (select left_only or different files)")
 		return
 	}
-	
+
 	// Copy files
 	copiedCount := 0
 	var lastErr error
@@ -3341,19 +3491,19 @@ func (c *Commander) syncLeftToRight() {
 			copiedCount++
 		}
 	}
-	
+
 	// Update status
 	if lastErr != nil {
 		c.setStatus(fmt.Sprintf("Synced %d file(s) left→right, last error: %s", copiedCount, lastErr.Error()))
 	} else {
 		c.setStatus(fmt.Sprintf("Synced %d file(s) left→right", copiedCount))
 	}
-	
+
 	// Clear selections
 	for i := range c.leftPane.Files {
 		c.leftPane.Files[i].Selected = false
 	}
-	
+
 	// Refresh and re-compare
 	c.refreshPane(c.rightPane)
 	c.enterCompareMode()
@@ -3365,7 +3515,7 @@ func (c *Commander) syncRightToLeft() {
 		c.setStatus("Not in compare mode")
 		return
 	}
-	
+
 	// Collect files to sync
 	var filesToSync []FileItem
 	for i := range c.rightPane.Files {
@@ -3382,7 +3532,7 @@ func (c *Commander) syncRightToLeft() {
 			}
 		}
 	}
-	
+
 	// If nothing selected, use current file
 	if len(filesToSync) == 0 && c.activePane == PaneRight && len(c.rightPane.Files) > 0 {
 		file := c.rightPane.Files[c.rightPane.SelectedIdx]
@@ -3394,12 +3544,12 @@ func (c *Commander) syncRightToLeft() {
 			}
 		}
 	}
-	
+
 	if len(filesToSync) == 0 {
 		c.setStatus("No files to sync (select right_only or different files)")
 		return
 	}
-	
+
 	// Copy files
 	copiedCount := 0
 	var lastErr error
@@ -3412,19 +3562,19 @@ func (c *Commander) syncRightToLeft() {
 			copiedCount++
 		}
 	}
-	
+
 	// Update status
 	if lastErr != nil {
 		c.setStatus(fmt.Sprintf("Synced %d file(s) right→left, last error: %s", copiedCount, lastErr.Error()))
 	} else {
 		c.setStatus(fmt.Sprintf("Synced %d file(s) right→left", copiedCount))
 	}
-	
+
 	// Clear selections
 	for i := range c.rightPane.Files {
 		c.rightPane.Files[i].Selected = false
 	}
-	
+
 	// Refresh and re-compare
 	c.refreshPane(c.leftPane)
 	c.enterCompareMode()
@@ -3436,12 +3586,12 @@ func (c *Commander) syncBothWays() {
 		c.setStatus("Not in compare mode")
 		return
 	}
-	
+
 	leftCopied := 0
 	rightCopied := 0
 	newerCopied := 0
 	var lastErr error
-	
+
 	// Process all files in compare results
 	for name, status := range c.compareResults {
 		switch status.Status {
@@ -3488,7 +3638,7 @@ func (c *Commander) syncBothWays() {
 			}
 		}
 	}
-	
+
 	// Update status
 	if lastErr != nil {
 		c.setStatus(fmt.Sprintf("Synced both ways: %d left→right, %d right→left, %d newer copied | Error: %s",
@@ -3497,7 +3647,7 @@ func (c *Commander) syncBothWays() {
 		c.setStatus(fmt.Sprintf("Synced both ways: %d left→right, %d right→left, %d newer copied",
 			leftCopied, rightCopied, newerCopied))
 	}
-	
+
 	// Refresh both panes and re-compare
 	c.refreshPane(c.leftPane)
 	c.refreshPane(c.rightPane)

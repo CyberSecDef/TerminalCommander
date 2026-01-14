@@ -29,7 +29,7 @@ When you first start Terminal Commander, you'll see a dual-pane interface:
 │ file2.pdf                        1.2MB  │ file2.pdf                        1.2MB  │
 │                                         │                                         │
 └─────────────────────────────────────────┴─────────────────────────────────────────┘
-F5:Copy F6:Move F8:Del Ctrl+F:Search Ctrl+E:Edit Ctrl+N:NewDir Tab:Switch ESC:Quit
+c/C:Copy m/M:Move Del:Delete s/S:Search e/E:Edit n/N:NewDir ?:Help Tab:Switch ESC:Quit
 ```
 
 The **left pane** is active (brighter colors), indicated by the blue header.
@@ -57,7 +57,7 @@ The active pane will have a brighter blue header.
 2. Press Tab to switch to right pane
 3. Navigate to destination directory (use Enter to go into folders)
 4. Press Tab to go back to left pane
-5. Press F5 (or Ctrl+C)
+5. Press c/C (copy)
 ```
 
 Status bar will show: `Copied: filename.txt`
@@ -66,7 +66,7 @@ Status bar will show: `Copied: filename.txt`
 ```
 1. Select file to move
 2. Navigate to destination in other pane
-3. Press F6 (or Ctrl+X)
+3. Press m/M (move)
 ```
 
 File will be moved (deleted from source, copied to destination).
@@ -74,7 +74,7 @@ File will be moved (deleted from source, copied to destination).
 ### 5. Delete a File
 ```
 1. Select file
-2. Press F8 (or Ctrl+D or Delete)
+2. Press Delete
 ```
 
 **Warning**: Deletion is permanent! Directories are deleted recursively.
@@ -82,7 +82,7 @@ File will be moved (deleted from source, copied to destination).
 ### 6. Rename a File
 ```
 1. Select file
-2. Press Ctrl+R
+2. Press r/R (rename)
 3. Edit the name in the prompt
 4. Press Enter to confirm or ESC to cancel
 ```
@@ -91,14 +91,23 @@ Status bar shows: `Rename to: newname.txt_` (cursor blinks at end)
 
 ### 7. Create a Directory
 ```
-1. Press Ctrl+N
+1. Press n/N (new directory)
 2. Type directory name
 3. Press Enter to create or ESC to cancel
 ```
 
 New directory appears in the current pane.
 
-### 8. Select Multiple Files
+### 8. Create a Blank File
+```
+1. Press b/B (blank file)
+2. Type file name
+3. Press Enter to create or ESC to cancel
+```
+
+Empty file appears in the current pane.
+
+### 9. Select Multiple Files
 ```
 1. Navigate to a file with arrow keys
 2. Press Spacebar to toggle selection (shows [*] marker)
@@ -108,10 +117,10 @@ New directory appears in the current pane.
 
 Selected files will show `[*]` before their name and remain selected while you navigate.
 
-### 9. Create an Archive
+### 10. Create an Archive
 ```
 1. Select files with Spacebar (or just highlight one file)
-2. Press Ctrl+A
+2. Press a/A (archive)
 3. Choose archive format with arrow keys (.zip, .tar.gz, etc.)
 4. Press Enter
 ```
@@ -122,19 +131,19 @@ Archive will be created in the current directory:
 
 After archiving, selections are cleared automatically.
 
-### 10. Search for a File
+### 11. Search for a File
 ```
-1. Press Ctrl+F
+1. Press s/S (search)
 2. Type part of filename
 3. Press Enter
 ```
 
 First matching file will be highlighted.
 
-### 11. Edit a File
+### 12. Edit a File
 ```
 1. Select a text file
-2. Press Ctrl+E
+2. Press e/E (edit)
 ```
 
 External editor opens:
@@ -143,7 +152,12 @@ External editor opens:
 
 After saving and closing editor, you return to Terminal Commander.
 
-### 12. Exit
+### 13. Get Help
+```
+1. Press ? (help)
+```
+
+A comprehensive help pane shows all available keyboard shortcuts and functions. Press any key to close.
 ```
 Press ESC or Ctrl+Q → Exit Terminal Commander
 ```
@@ -155,7 +169,7 @@ Press ESC or Ctrl+Q → Exit Terminal Commander
 Left Pane: /Downloads    Right Pane: /Photos/2024
 1. Navigate Downloads → find photo
 2. Tab to switch → navigate to Photos/2024
-3. Tab back → press F5 to copy
+3. Tab back → press c/C to copy
 4. Repeat for all photos
 ```
 
@@ -163,33 +177,33 @@ Left Pane: /Downloads    Right Pane: /Photos/2024
 ```
 Left Pane: /Documents    Right Pane: /Backup
 1. Select file in Documents
-2. Press F5 to copy to Backup
+2. Press c/C to copy to Backup
 ```
 
 ### Clean Up Downloads
 ```
 Left Pane: /Downloads    Right Pane: /Organized
-1. Press F6 to move files worth keeping to Organized
-2. Press F8 to delete files you don't need
+1. Press m/M to move files worth keeping to Organized
+2. Press Delete to delete files you don't need
 ```
 
 ### Archive Project Files
 ```
 Left Pane: /project/src
 1. Press Spacebar on each important file to select them
-2. Press Ctrl+A to create archive
+2. Press a/A to create archive
 3. Select .tar.gz format with arrow keys
 4. Press Enter → Creates timestamped archive
-5. Use F6 to move archive to backup location
+5. Use m/M to move archive to backup location
 ```
 
 ### Batch Operations on Multiple Files
 ```
 Left Pane: /photos    Right Pane: /vacation_album
 1. Select multiple photos with Spacebar (shows [*] marker)
-2. Press F5 to copy all selected files to right pane
+2. Press c/C to copy all selected files to right pane
    OR
-   Press Ctrl+A to create a single archive of all photos
+   Press a/A to create a single archive of all photos
 ```
 
 ## Keyboard Reference Card
@@ -202,16 +216,20 @@ Left Pane: /photos    Right Pane: /vacation_album
 | Parent Directory | Backspace |
 | Select/Deselect Item | Spacebar |
 | Switch Pane | Tab |
-| Copy | F5 or Ctrl+C |
-| Move | F6 or Ctrl+X |
-| Delete | F8 or Ctrl+D or Del |
-| Create Archive | Ctrl+A |
-| Rename | Ctrl+R |
-| Edit | Ctrl+E |
-| New Directory | Ctrl+N |
-| Search | Ctrl+F |
-| Go to Folder | Ctrl+G |
-| Hash File | Ctrl+H |
+| Copy | c/C |
+| Move | m/M |
+| Delete | Delete |
+| Create Archive | a/A |
+| Rename | r/R |
+| Edit | e/E |
+| New Directory | n/N |
+| New Blank File | b/B |
+| Search | s/S |
+| Go to Folder | g/G |
+| Hash File | h/H |
+| Diff Mode | f/F |
+| Compare Mode | y/Y |
+| Help | ? |
 | Quit | ESC or Ctrl+Q |
 
 ## Tips
@@ -222,10 +240,11 @@ Left Pane: /photos    Right Pane: /vacation_album
 4. **Directories in brackets** - Easy to distinguish `[dirname]` from files
 5. **Selected items** - Marked with `[*]` prefix, selections persist while navigating
 6. **Status bar** - Watch for confirmation messages after operations
-7. **Search is fast** - Use Ctrl+F instead of scrolling through long lists
-8. **Delete is permanent** - Be careful with F8, there's no undo
+7. **Search is fast** - Use s/S instead of scrolling through long lists
+8. **Delete is permanent** - Be careful with Delete, there's no undo
 9. **Archive formats** - Only formats with available tools on your system will be shown
 10. **Multi-select operations** - Works with copy, move, delete, and archive creation
+11. **Help is available** - Press ? anytime to see all keyboard shortcuts
 
 ## Troubleshooting
 
